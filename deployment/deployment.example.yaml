@@ -1,0 +1,142 @@
+# =============================================================================
+#  KSS Client Web - fleet-public: the public Fleet site
+# =============================================================================
+#  A standalone public site on its own host. It is NOT a Shell zone: it is
+#  never composed into the Shell and holds no session, no secret and no data
+#  source (v0 is a static page).
+#
+#  NOT IN THIS FILE, BY DESIGN:
+#   - Ingress and TLS: written and applied separately for the public host.
+#   - Any Secret: the app needs none. There is no NEXTAUTH_SECRET here, and
+#     there must never be one.
+#   - A ConfigMap: v0 reads no configuration.
+#
+#  NEEDED IN THE NAMESPACE BEFORE THE FIRST ROLLOUT:
+#   - docker-secret (image pull). Secrets are namespace-scoped. Without it the
+#     pods sit in ImagePullBackOff.
+#
+#  NAMES: namespace, Deployment and image follow the estate rule
+#  kss-client-web-<slug> with slug "fleet-public", which is what the generated
+#  build and rollout lines expect. Change them together or not at all.
+# =============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kss-client-web-fleet-public
+  labels:
+    name: kss-client-web-fleet-public
+    app: kss-client-web-fleet-public
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kss-client-web-fleet-public
+  namespace: kss-client-web-fleet-public
+  labels:
+    app: kss-client-web-fleet-public
+    version: v1.0.0
+  annotations:
+    keel.sh/policy: force
+    keel.sh/match-tag: "true"
+    keel.sh/trigger: poll
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: kss-client-web-fleet-public
+  template:
+    metadata:
+      labels:
+        app: kss-client-web-fleet-public
+        version: v1.0.0
+    spec:
+      imagePullSecrets:
+      - name: docker-secret
+      containers:
+      - name: kss-client-web-fleet-public
+        image: docker-hosted.sebaoffice.ir/kss-client-web-fleet-public:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        - name: HOSTNAME
+          value: "0.0.0.0"
+        - name: TZ
+          value: "UTC"
+        # A static page: the small end of the estate's zone profile.
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        # /api/health answers without a session or any other service.
+        livenessProbe:
+          httpGet: { path: /api/health, port: 3000, scheme: HTTP }
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet: { path: /api/health, port: 3000, scheme: HTTP }
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet: { path: /api/health, port: 3000, scheme: HTTP }
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 24
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop: [ALL]
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kss-client-web-fleet-public-service
+  namespace: kss-client-web-fleet-public
+  labels:
+    app: kss-client-web-fleet-public
+spec:
+  selector:
+    app: kss-client-web-fleet-public
+  ports:
+  - name: http
+    port: 80
+    targetPort: 3000
+    protocol: TCP
+  type: ClusterIP
+  sessionAffinity: None
+---
+# minAvailable 1 against replicas 2: strictly below replicas, or a node drain
+# deadlocks.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kss-client-web-fleet-public-pdb
+  namespace: kss-client-web-fleet-public
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: kss-client-web-fleet-public

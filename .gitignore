@@ -1,0 +1,19 @@
+# dependencies and build output
+/node_modules
+/.next/
+/out/
+/build
+next-env.d.ts
+*.tsbuildinfo
+
+# logs
+*.log
+
+# local env files hold real values; this app needs none
+.env
+.env.*
+
+# deployment files hold real values; only their example copies are committed
+deployment/deployment.yaml
+deployment/*.bak*
+*.bak-*
