@@ -105,125 +105,304 @@ a:focus-visible {
 
 /* ── Hero ───────────────────────────────────────────────────────────────── */
 
+/* A short band: the team chart below it starts on the first screen. */
 .hero {
-  display: grid;
-  gap: 2.5rem;
-  align-items: center;
-  padding-block: clamp(2rem, 7vw, 5.5rem) clamp(2.5rem, 7vw, 5rem);
+  padding-block: 0.5rem 1.75rem;
 }
 
 .hero h1 {
-  margin: 0 0 1.25rem;
+  margin: 0 0 0.5rem;
   font-weight: 800;
-  font-size: clamp(2.25rem, 6vw, 4rem);
-  line-height: 1.2;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.3;
 }
 
 /* Latin headline only: tighter tracking. Persian keeps its natural joins. */
 :lang(en) .hero h1 {
-  letter-spacing: -0.02em;
-  line-height: 1.08;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
 }
 
 .intro {
   margin: 0;
   max-width: var(--measure);
-  font-size: 1.1875rem;
+  font-size: 1rem;
   color: var(--muted);
 }
 
-.motif {
-  margin: 0;
+/* ── Team chart ─────────────────────────────────────────────────────────── */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
-.motif svg {
-  display: block;
-  width: 100%;
-  max-width: 30rem;
-  height: auto;
-  margin-inline: auto;
+.chart,
+.activity {
+  border-block-start: 1px solid var(--line);
+  padding-block: clamp(2.5rem, 6vw, 4.5rem);
 }
 
-.motif-link {
-  fill: none;
-  stroke: var(--line);
-  stroke-width: 2;
-}
-
-.motif-row {
-  animation: motif-in 520ms ease-out both;
-}
-
-@keyframes motif-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .motif-row {
-    animation: none;
-  }
-}
-
-@media (min-width: 56rem) {
-  .hero {
-    grid-template-columns: 1.1fr 1fr;
-    gap: 4rem;
-  }
-}
-
-/* ── Coming soon ────────────────────────────────────────────────────────── */
-
-.soon {
+.chart {
   background: var(--band);
-  border-block: 1px solid var(--line);
 }
 
-.soon-inner {
-  padding-block: clamp(2.5rem, 6vw, 4rem);
+.section-head {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+  margin-block-end: 2rem;
 }
 
-.soon h2 {
-  margin: 0 0 0.75rem;
+.section-head h2,
+.chart-notice h2 {
+  margin: 0;
   font-weight: 800;
   font-size: clamp(1.5rem, 3.5vw, 2rem);
   line-height: 1.3;
 }
 
-.soon p {
-  margin: 0 0 1.5rem;
+.section-head p,
+.chart-notice p {
+  margin: 0;
   max-width: var(--measure);
+  color: var(--muted);
 }
 
-.soon ul {
+.pill {
+  display: inline-block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.125rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+}
+
+/* The dense chart: a leadership strip, then boxes in columns sized to their
+   content, so the boxes pack top to bottom and no area is left empty. */
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.5rem;
+  padding: 0.625rem 0.75rem;
+  margin-block-end: 1rem;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 0.875rem;
+}
+
+.strip-label {
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: var(--muted);
+  margin-inline-end: 0.25rem;
+}
+
+.strip ul {
+  display: contents;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.125rem 0.625rem 0.125rem 0.125rem;
+  padding-inline: 0.125rem 0.625rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+}
+
+.boxes {
+  column-width: 14rem;
+  column-gap: 0.75rem;
+}
+
+.box {
+  break-inside: avoid;
+  margin-block-end: 0.75rem;
+  padding: 0.5rem 0.25rem 0.375rem;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+}
+
+.box h3 {
+  margin: 0;
+  padding: 0 0.5rem 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 800;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.box ul {
+  list-style: none;
   margin: 0;
   padding: 0;
+  display: grid;
+  gap: 0.0625rem;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.5rem;
+}
+
+.row-lead {
+  background: var(--paper);
+}
+
+.line-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.375rem;
+  min-width: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5rem;
+}
+
+.line-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.line-name.strong {
+  font-weight: 800;
+}
+
+.line-role {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.initial {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: var(--accent, var(--muted));
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.6875rem;
+  line-height: 1;
+}
+
+/* ── Activity ───────────────────────────────────────────────────────────── */
+
+.activity-grid {
   list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+}
+
+.activity-card {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  padding: 1.125rem;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 0.875rem;
+}
+
+.activity-other {
+  background: transparent;
+  border-style: dashed;
+}
+
+.activity-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.activity-top h3 {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 800;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.activity-note {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.bars {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  width: 6rem;
+  height: 2rem;
+}
+
+.bars span {
+  flex: 1;
+  min-width: 0;
+  border-radius: 2px;
+  background: var(--role-blue);
+}
+
+.bars .bar-zero {
+  background: var(--line);
+}
+
+.activity-card dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.activity-card dl div {
+  padding: 0.625rem 0.75rem;
+  background: var(--paper);
+  border-radius: 0.625rem;
+}
+
+.activity-card dt {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.activity-card dd {
+  margin: 0;
+  font-weight: 800;
+  font-size: 1.375rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+/* ── Notice (no chart to show) ──────────────────────────────────────────── */
+
+.notice-inner {
   display: grid;
   gap: 0.75rem;
-  max-width: var(--measure);
-}
-
-.soon li {
-  position: relative;
-  padding-inline-start: 1.5rem;
-}
-
-.soon li::before {
-  content: '';
-  position: absolute;
-  inset-inline-start: 0;
-  top: 0.8em;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 2px;
-  background: var(--ink);
 }
 
 /* ── Footer ─────────────────────────────────────────────────────────────── */

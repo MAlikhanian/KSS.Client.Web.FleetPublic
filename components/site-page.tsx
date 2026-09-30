@@ -1,13 +1,18 @@
 import { COPY, type Lang } from './copy';
 import { jsonLd } from './site';
-import { TeamMotif } from './team-motif';
+import { buildChart } from './snapshot';
+import { loadSnapshot } from './snapshot-server';
+import { ChartNotice, TeamChart } from './team-chart';
 
 /**
- * The public page. A server component with no data and no client JavaScript
- * of its own: it renders the same way for every visitor.
+ * The public page. A server component with no client JavaScript of its own.
+ * The team chart is fetched on the server from the public snapshot service;
+ * the browser never calls that service. If the snapshot cannot be had, the page
+ * still renders in full, with a short notice in place of the chart.
  */
-export function SitePage({ lang }: { lang: Lang }) {
+export async function SitePage({ lang }: { lang: Lang }) {
   const c = COPY[lang];
+  const result = await loadSnapshot();
   return (
     <div className="site">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(lang) }} />
@@ -20,24 +25,15 @@ export function SitePage({ lang }: { lang: Lang }) {
 
       <main>
         <section className="hero wrap" aria-labelledby="page-title">
-          <div className="hero-text">
-            <h1 id="page-title">{c.title}</h1>
-            <p className="intro">{c.intro}</p>
-          </div>
-          <TeamMotif label={c.artLabel} />
+          <h1 id="page-title">{c.title}</h1>
+          <p className="intro">{c.intro}</p>
         </section>
 
-        <section className="soon" aria-labelledby="soon-title">
-          <div className="wrap soon-inner">
-            <h2 id="soon-title">{c.soonTitle}</h2>
-            <p>{c.soonBody}</p>
-            <ul>
-              {c.soonItems.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        </section>
+        {result.state === 'ok' ? (
+          <TeamChart model={buildChart(result.snapshot)} c={c} />
+        ) : (
+          <ChartNotice c={c} state={result.state} />
+        )}
       </main>
 
       <footer className="site-footer wrap">

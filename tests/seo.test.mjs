@@ -100,6 +100,11 @@ for (const [lang, route, otherHref] of [
       assert.deepEqual(types.sort(), ['Organization', 'WebSite']);
     });
     test('exactly one <h1>', () => assert.equal((html.match(/<h1[\s>]/g) ?? []).length, 1));
+    test('the team chart section is there, and never shows a technical code', () => {
+      // This suite runs with no snapshot service, so the section is the graceful notice.
+      assert.match(html, /data-chart-state="(ok|empty|unavailable)"/);
+      assert.ok(!html.includes('SNAPSHOT_') && !html.includes('FLEET_'), 'no error code reaches the page');
+    });
     test('HTTPS only: Strict-Transport-Security is sent', () => {
       assert.match(res.headers.get('strict-transport-security') ?? '', /max-age=\d+/);
     });

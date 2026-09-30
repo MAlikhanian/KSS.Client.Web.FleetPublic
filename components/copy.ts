@@ -24,9 +24,21 @@ export interface Copy {
   switchLang: Lang;
   title: string;
   intro: string;
-  soonTitle: string;
-  soonBody: string;
-  soonItems: string[];
+  chartTitle: string;
+  chartBody: string;
+  members: (count: string) => string;
+  leadership: string;
+  activityTitle: string;
+  activityBody: string;
+  sent: string;
+  received: string;
+  other: string;
+  otherBody: string;
+  unavailableTitle: string;
+  unavailableBody: string;
+  emptyTitle: string;
+  emptyBody: string;
+  locale: string;
   artLabel: string;
   footerCopyright: string;
   footerCookies: string;
@@ -44,15 +56,22 @@ export const COPY: Record<Lang, Copy> = {
     switchLang: 'en',
     title: `تیم هوش مصنوعی ${LEGAL_NAME_FA}`,
     intro:
-      `${LEGAL_NAME_FA} تیمی از عامل‌های هوش مصنوعی دارد که مثل یک سازمان با هم کار می‌کنند. هر عامل نقش مشخصی در یک واحد دارد و هر تیم سرپرستی دارد که کارها را برنامه‌ریزی و تقسیم می‌کند. این سایت به‌زودی این تیم را همان‌طور که امروز هست نشان می‌دهد.`,
-    soonTitle: 'نمودار تیم در راه است',
-    soonBody:
-      'به‌زودی در این صفحه کل تیم را می‌بینید: چه کسی در کدام واحد کار می‌کند، هر نقش چه کاری انجام می‌دهد و تیم چقدر فعال بوده است.',
-    soonItems: [
-      'نمودار تیم، با نام کوچک، نقش و واحد هر عامل.',
-      'رنگ‌هایی که نقش هر عامل را در یک نگاه نشان می‌دهند.',
-      'آمار فعالیت هفتگی، فقط به‌صورت جمع کل.',
-    ],
+      `${LEGAL_NAME_FA} تیمی از عامل‌های هوش مصنوعی دارد که مثل یک سازمان با هم کار می‌کنند. هر عامل نقش مشخصی در یک واحد دارد و هر تیم سرپرستی دارد که کارها را برنامه‌ریزی و تقسیم می‌کند. در ادامه، همین تیم را همان‌طور که امروز هست می‌بینید.`,
+    chartTitle: 'تیم امروز',
+    chartBody: 'هر عامل با نام کوچک، نقش و واحدش، و اینکه به چه کسی گزارش می‌دهد. رنگ هر عامل نقش او را نشان می‌دهد.',
+    members: (count) => `${count} عامل`,
+    leadership: 'رهبری',
+    activityTitle: 'فعالیت در هفت روز گذشته',
+    activityBody: 'پیام‌هایی که عامل‌ها برای هم فرستاده و از هم دریافت کرده‌اند، به تفکیک واحد. تعدادهای کوچک با هم و با عنوان «سایر» نشان داده می‌شوند.',
+    sent: 'فرستاده',
+    received: 'دریافتی',
+    other: 'سایر',
+    otherBody: 'تعدادهای کوچک، با هم',
+    unavailableTitle: 'نمودار تیم به‌زودی برمی‌گردد',
+    unavailableBody: 'نمایش نمودار تیم در این لحظه ممکن نیست. لطفاً چند دقیقه دیگر دوباره سر بزنید.',
+    emptyTitle: 'نمودار تیم به‌زودی اینجا نمایش داده می‌شود',
+    emptyBody: 'هنوز عاملی برای نمایش وجود ندارد.',
+    locale: 'fa-IR',
     artLabel: 'تصویری از یک نمودار سازمانی که با رنگ نقش‌های تیم کشیده شده است',
     footerCopyright: `© ۲۰۲۶ ${LEGAL_NAME_FA}`,
     footerCookies: 'این سایت هیچ کوکی‌ای ذخیره نمی‌کند.',
@@ -68,15 +87,22 @@ export const COPY: Record<Lang, Copy> = {
     switchLang: 'fa',
     title: 'The KSS AI team',
     intro:
-      'KSS runs a team of AI agents that work together the way a company does. Each agent has one role in one department, and every team has a lead who plans the work and hands it out. This site will soon show that team as it is today.',
-    soonTitle: 'The team chart is on its way',
-    soonBody:
-      'Soon this page will show the whole team: who works in each department, what each role does, and how busy the team has been.',
-    soonItems: [
-      'A team chart showing each agent by first name, role and department.',
-      'Colours that show each agent’s role at a glance.',
-      'Weekly activity figures, shown only as totals.',
-    ],
+      'KSS runs a team of AI agents that work together the way a company does. Each agent has one role in one department, and every team has a lead who plans the work and hands it out. Below is that team as it is today.',
+    chartTitle: 'The team today',
+    chartBody: 'Every agent by first name, role and department, and who they report to. Each agent’s colour marks their role.',
+    members: (count) => `${count} agents`,
+    leadership: 'Leadership',
+    activityTitle: 'Activity in the last seven days',
+    activityBody: 'Messages the agents sent to and received from each other, per department. Small counts are grouped together as “other”.',
+    sent: 'Sent',
+    received: 'Received',
+    other: 'Other',
+    otherBody: 'Small counts, grouped',
+    unavailableTitle: 'The team chart will be back shortly',
+    unavailableBody: 'The team chart can’t be shown right now. Please check again in a few minutes.',
+    emptyTitle: 'The team chart will appear here soon',
+    emptyBody: 'There are no agents to show yet.',
+    locale: 'en-GB',
     artLabel: 'An illustration of an organisation chart drawn in the team’s role colours',
     footerCopyright: '© 2026 KSS',
     footerCookies: 'This site sets no cookies.',

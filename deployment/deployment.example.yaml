@@ -2,14 +2,14 @@
 #  KSS Client Web - fleet-public: the public Fleet site
 # =============================================================================
 #  A standalone public site on its own host. It is NOT a Shell zone: it is
-#  never composed into the Shell and holds no session, no secret and no data
-#  source (v0 is a static page).
+#  never composed into the Shell and holds no session and no secret. Its one
+#  data source is the public Fleet snapshot service, called from the SERVER
+#  only, in-cluster, anonymously. The browser never calls that service.
 #
 #  NOT IN THIS FILE, BY DESIGN:
 #   - Ingress and TLS: written and applied separately for the public host.
 #   - Any Secret: the app needs none. There is no NEXTAUTH_SECRET here, and
 #     there must never be one.
-#   - A ConfigMap: v0 reads no configuration.
 #
 #  NEEDED IN THE NAMESPACE BEFORE THE FIRST ROLLOUT:
 #   - docker-secret (image pull). Secrets are namespace-scoped. Without it the
@@ -27,6 +27,18 @@ metadata:
   labels:
     name: kss-client-web-fleet-public
     app: kss-client-web-fleet-public
+---
+# The public snapshot service's base URL, in-cluster. Not a secret: the service
+# is anonymous and the app sends it no credential of any kind.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kss-client-web-fleet-public-config
+  namespace: kss-client-web-fleet-public
+  labels:
+    app: kss-client-web-fleet-public
+data:
+  FLEET_PUBLIC_API_URL: "http://kss-fleet-public-service-service.kss-fleet-public-service.svc.cluster.local"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -75,7 +87,17 @@ spec:
           value: "0.0.0.0"
         - name: TZ
           value: "UTC"
-        # A static page: the small end of the estate's zone profile.
+        # Server-side only (no NEXT_PUBLIC_ prefix): it never reaches the browser.
+        - name: FLEET_PUBLIC_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: kss-client-web-fleet-public-config
+              key: FLEET_PUBLIC_API_URL
+              # optional: a missing ConfigMap must not stop the pod starting; the page
+              # then shows its graceful notice and the server logs SNAPSHOT_NOT_CONFIGURED.
+              optional: true
+        # One server-rendered page with a small in-memory cache: the small end of
+        # the estate's zone profile.
         resources:
           requests:
             memory: "128Mi"
