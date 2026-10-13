@@ -31,6 +31,8 @@ export interface PublicAgent {
   project: PublicTitle | null;
   lastActiveAt: string | null;
   activity7d: Day[] | null;
+  /** The agent's published support-room labels in order (a label may repeat), or null when none are published. */
+  rooms: string[] | null;
 }
 
 /** One day's count; null = suppressed by the service (fewer than 3). */
@@ -50,6 +52,22 @@ export interface ActivityBucket {
   count: number;
 }
 
+/** One published AI account's latest reading: percentages 0-100 (null when unknown) and reset times (ISO UTC). */
+export interface UsageAccount {
+  label: string;
+  weeklyPct: number | null;
+  weeklyResetsAt: string | null;
+  fiveHourPct: number | null;
+  fiveHourResetsAt: string | null;
+  readAt: string;
+}
+
+/** The published accounts' readings; asOf is the latest readAt among them. */
+export interface Usage {
+  asOf: string;
+  accounts: UsageAccount[];
+}
+
 export interface Snapshot {
   /** When the service built this snapshot (ISO 8601, UTC), or null if it did not say. */
   generatedAt: string | null;
@@ -61,6 +79,8 @@ export interface Snapshot {
    * send it. A value under 3 is suppressed at the source (null, or 0 from an older shape): both read "fewer than 3".
    */
   activeByHour: Day[] | null;
+  /** AI account usage, or null when none is published (or the field is malformed: never fatal). */
+  usage: Usage | null;
   /** The activity period's days, oldest first. */
   days: string[];
 }
@@ -123,7 +143,9 @@ export function parseSnapshot(body: unknown): ParseResult {
       if (!Array.isArray(v) || v.length !== 7 || v.some((x) => x !== null && count(x) === null)) return { ok: false, reason: 'AGENT_ACTIVITY_INVALID' };
       activity7d = v as Day[];
     }
-    agents.push({ n, firstName, role, department, reportsTo, project, lastActiveAt, activity7d });
+    // Optional and new: malformed rooms are dropped, never fatal.
+    const rooms = Array.isArray(a.rooms) && a.rooms.length > 0 && a.rooms.length <= 50 && a.rooms.every((r) => text(r) !== null) ? (a.rooms as string[]).map((r) => r.trim()) : null;
+    agents.push({ n, firstName, role, department, reportsTo, project, lastActiveAt, activity7d, rooms });
   }
 
   let generatedAt: string | null = null;
@@ -172,7 +194,34 @@ export function parseSnapshot(body: unknown): ParseResult {
   // field can never freeze the whole page on its last good copy.
   const hours = body.activeByHour;
   const activeByHour = Array.isArray(hours) && hours.length === 24 && hours.every((x) => x === null || count(x) !== null) ? (hours as Day[]) : null;
-  return { ok: true, snapshot: { generatedAt, agents, departments, activity, activeByHour, days } };
+  return { ok: true, snapshot: { generatedAt, agents, departments, activity, activeByHour, usage: parseUsage(body.usage), days } };
+}
+
+const isoOrNull = (v: unknown): string | null | undefined => {
+  if (v === null || v === undefined) return null;
+  const t = typeof v === 'string' ? Date.parse(v) : NaN;
+  return Number.isNaN(t) ? undefined : new Date(t).toISOString();
+};
+const pctOrNull = (v: unknown): number | null | undefined => (v === null || v === undefined ? null : count(v) !== null && (v as number) <= 100 ? (v as number) : undefined);
+
+/** The optional usage block. Anything malformed makes it null (the panel then says "no recent reading"). */
+function parseUsage(v: unknown): Usage | null {
+  if (!isObj(v) || !Array.isArray(v.accounts) || v.accounts.length === 0 || v.accounts.length > 10) return null;
+  const asOf = isoOrNull(v.asOf);
+  if (!asOf) return null;
+  const accounts: UsageAccount[] = [];
+  for (const a of v.accounts) {
+    if (!isObj(a)) return null;
+    const label = text(a.label);
+    const readAt = isoOrNull(a.readAt);
+    const weeklyPct = pctOrNull(a.weeklyPct);
+    const fiveHourPct = pctOrNull(a.fiveHourPct);
+    const weeklyResetsAt = isoOrNull(a.weeklyResetsAt);
+    const fiveHourResetsAt = isoOrNull(a.fiveHourResetsAt);
+    if (label === null || !readAt || weeklyPct === undefined || fiveHourPct === undefined || weeklyResetsAt === undefined || fiveHourResetsAt === undefined) return null;
+    accounts.push({ label, weeklyPct, weeklyResetsAt, fiveHourPct, fiveHourResetsAt, readAt });
+  }
+  return { asOf, accounts };
 }
 
 /** Every UTC day from `from` to `to`, inclusive. */
@@ -218,6 +267,7 @@ export interface ChartPerson {
   activity7d: Day[] | null;
   /** Nesting under the box's first person: 0 for the lead, 1 for her reports, ... */
   depth: number;
+  rooms: string[] | null;
 }
 
 export type ChartBox =
@@ -268,6 +318,7 @@ export interface ChartModel {
   totalSent: number;
   totalReceived: number;
   activeByHour: Day[] | null;
+  usage: Usage | null;
   /** Head count per served department, in the service's order (departments with nobody left out). */
   headcount: { department: string; count: number }[];
 }
@@ -288,6 +339,7 @@ export function buildChart(s: Snapshot): ChartModel {
     lastActiveAt: a.lastActiveAt,
     activity7d: a.activity7d,
     depth,
+    rooms: a.rooms,
   });
   const isLeadRole = (a: PublicAgent) => LEADERSHIP_ROLES.has(norm(a.role));
 
@@ -379,6 +431,7 @@ export function buildChart(s: Snapshot): ChartModel {
     totalSent: s.activity.filter((b) => b.direction === 'sent').reduce((acc, b) => acc + b.count, 0),
     totalReceived: s.activity.filter((b) => b.direction === 'received').reduce((acc, b) => acc + b.count, 0),
     activeByHour: s.activeByHour,
+    usage: s.usage,
     headcount: s.departments.map((department) => ({ department, count: s.agents.filter((a) => a.department === department).length })).filter((d) => d.count > 0),
   };
 }

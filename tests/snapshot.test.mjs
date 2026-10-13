@@ -194,6 +194,24 @@ describe('snapshot parser', () => {
       assert.equal(r.snapshot.activeByHour, null, 'it is dropped');
     }
   });
+  test('usage: parsed when well formed; any malformed part makes it null (never fatal); rooms likewise', () => {
+    const body = makeSnapshot('full');
+    let r = parseSnapshot(body);
+    assert.equal(r.ok, true);
+    assert.equal(r.snapshot.usage.accounts.length, 3);
+    assert.equal(r.snapshot.usage.accounts[2].fiveHourPct, null, 'an unknown percentage stays null');
+    for (const bad of [{ asOf: 'x', accounts: [] }, { asOf: body.usage.asOf, accounts: [{ ...body.usage.accounts[0], weeklyPct: 140 }] }, { asOf: body.usage.asOf, accounts: [{ ...body.usage.accounts[0], label: '' }] }, 'nope']) {
+      r = parseSnapshot({ ...body, usage: bad });
+      assert.equal(r.ok, true, 'a malformed usage does not refuse the snapshot');
+      assert.equal(r.snapshot.usage, null);
+    }
+    const withRooms = makeSnapshot('full');
+    withRooms.agents[0].rooms = ['Private client', 'Private client', 'Room B'];
+    withRooms.agents[1].rooms = [42];
+    r = parseSnapshot(withRooms);
+    assert.deepEqual(r.snapshot.agents[0].rooms, ['Private client', 'Private client', 'Room B']);
+    assert.equal(r.snapshot.agents[1].rooms, null, 'malformed rooms are dropped');
+  });
   test('generatedAt: optional; missing means null, a valid time is kept as ISO UTC', () => {
     const body = makeSnapshot('ok');
     delete body.generatedAt;
@@ -384,10 +402,40 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       assert.equal(hours, 24, route + ': 24 hours');
       const quiet = makeSnapshot('full').activeByHour.filter((v) => v === null || v === 0).length;
       assert.equal((html.match(/data-suppressed=""/g) ?? []).length, quiet, route + ': every suppressed hour drawn as suppressed');
+      // Account usage: three accounts, each with a weekly and a five-hour meter; the number is always printed.
+      assert.match(html, /data-testid="accounts" data-usage="fresh"/, route + ': a fresh reading');
+      assert.equal((html.match(/data-testid="usage-account"/g) ?? []).length, 3, route + ': three accounts');
+      assert.ok(html.includes(lang === 'fa' ? 'حساب ۲' : 'Account 2'), route + ': the account label in the page language');
+      assert.ok(html.includes(lang === 'fa' ? '۹۱٪' : '91%'), route + ': the percentage is printed, not only drawn');
+      assert.match(html, /data-testid="usage-five-hour" data-band="high"/, route + ': a high reading is banded high');
+      assert.ok(html.includes(lang === 'fa' ? '>بالا<' : '>high<'), route + ': and says so in words');
+      assert.match(html, /data-testid="usage-weekly" data-band="warning"/, route + ': 76% is in the warning band');
+      assert.match(html, /data-testid="usage-five-hour" data-band="unknown"/, route + ': an unknown percentage is not drawn');
+      assert.ok(html.includes(lang === 'fa' ? 'بازنشانی: ' : 'resets '), route + ': reset times');
+      assert.ok(html.includes(lang === 'fa' ? 'آخرین خوانش: ' : 'As of '), route + ': the reading time');
       assert.ok(!html.includes(PROJECT_CANARY), route + ': no internal project name');
       assert.ok(html.includes(lang === 'fa' ? 'کمتر از ۳' : 'fewer than 3'), route + ': a suppressed day reads as fewer than 3, never as none');
       assert.ok(html.includes(lang === 'fa' ? 'دست‌کم ' : 'at least '), route + ': a total over suppressed days is a lower bound');
     }
+    await switchTo('ok', (h) => chartState(h) === 'ok' && !h.includes('data-testid="team-lead"'));
+  });
+
+  test('usage staleness: over 30 minutes is marked possibly out of date; over 6 hours shows no numbers', async () => {
+    mock.state.usageAgeMinutes = 45;
+    await switchTo('full', (h) => h.includes('data-usage="stale"'));
+    for (const route of ['/', '/en']) {
+      const { html } = await page(route);
+      assert.ok(html.includes(route === '/' ? 'ممکن است به‌روز نباشد' : 'may be out of date'), route + ': a stale reading says so');
+      assert.equal((html.match(/data-testid="usage-account"/g) ?? []).length, 3, route + ': the numbers still show');
+    }
+    mock.state.usageAgeMinutes = 7 * 60;
+    await switchTo('full', (h) => h.includes('data-usage="none"'));
+    for (const route of ['/', '/en']) {
+      const { html } = await page(route);
+      assert.equal((html.match(/data-testid="usage-account"/g) ?? []).length, 0, route + ': no stale numbers');
+      assert.ok(html.includes(route === '/' ? 'خوانش تازه‌ای در دسترس نیست' : 'No recent reading'), route + ': "no recent reading"');
+    }
+    mock.state.usageAgeMinutes = null;
     await switchTo('ok', (h) => chartState(h) === 'ok' && !h.includes('data-testid="team-lead"'));
   });
 

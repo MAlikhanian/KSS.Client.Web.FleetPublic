@@ -116,6 +116,19 @@ export function makeSnapshot(mode = 'ok') {
   }
   const body = { generatedAt: new Date().toISOString(), agents, departments: DEPARTMENTS, roles: ROLES, activity: { ...activityRange, buckets } };
   // Today's hours (UTC): a quiet hour is suppressed (null), as the service will send it.
+  // Account usage as last read, a few minutes before the snapshot: one normal, one in the warning band, one high.
+  if (mode === 'full') {
+    const t = Date.now();
+    const iso = (ms) => new Date(t + ms).toISOString();
+    body.usage = {
+      asOf: iso(-4 * 60_000),
+      accounts: [
+        { label: 'Account 1', weeklyPct: 42, weeklyResetsAt: iso(3 * 86_400_000), fiveHourPct: 18, fiveHourResetsAt: iso(2 * 3_600_000), readAt: iso(-4 * 60_000) },
+        { label: 'Account 2', weeklyPct: 76, weeklyResetsAt: iso(86_400_000), fiveHourPct: 91, fiveHourResetsAt: iso(3_600_000), readAt: iso(-5 * 60_000) },
+        { label: 'Account 3', weeklyPct: 13, weeklyResetsAt: iso(5 * 86_400_000), fiveHourPct: null, fiveHourResetsAt: null, readAt: iso(-6 * 60_000) },
+      ],
+    };
+  }
   if (mode === 'full') body.activeByHour = Array.from({ length: 24 }, (_, h) => ((h * 7) % 11 < 3 ? null : 3 + ((h * 7) % 11)));
   if (mode === 'invalid') body.activity = buckets; // the wrong shape: an array, not {from, to, buckets}
   return body;
@@ -124,7 +137,8 @@ export function makeSnapshot(mode = 'ok') {
 /** Starts the mock. `state.mode` can be changed while it runs; `state.requests` records what arrived. */
 export function startMock(port = 0) {
   // generatedAt: when set, every snapshot carries this fixed time (tests tell it from a render time).
-  const state = { mode: 'ok', requests: [], generatedAt: null };
+  // usageAgeMinutes: when set (mode 'full'), the usage reading is that many minutes old.
+  const state = { mode: 'ok', requests: [], generatedAt: null, usageAgeMinutes: null };
   const server = http.createServer((req, res) => {
     state.requests.push({ method: req.method, url: req.url, headers: { ...req.headers } });
     if (req.url !== '/api/public/snapshot') {
@@ -141,6 +155,7 @@ export function startMock(port = 0) {
     }
     const body = makeSnapshot(state.mode);
     if (state.generatedAt) body.generatedAt = state.generatedAt;
+    if (state.usageAgeMinutes !== null && body.usage) body.usage.asOf = new Date(Date.parse(body.generatedAt) - state.usageAgeMinutes * 60_000).toISOString();
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(body));
   });
   return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve({ server, state, port: server.address().port })));

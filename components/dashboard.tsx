@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader } from './ui/card';
 import { HourBars } from './ui/hour-bars';
 import { Sparkline } from './ui/sparkline';
 import { type BarSeries, StackedBars } from './ui/stacked-bars';
+import { UsagePanel } from './usage-panel';
 
 /**
  * The dashboard band of the public page: stat cards with small charts, the usage graphs and the departments table.
@@ -145,15 +146,7 @@ export function UsageBand({ model, c }: { model: ChartModel; c: Copy }) {
               </CardBody>
             </Card>
           ) : null}
-          <Card data-testid="accounts">
-            <CardHeader title={c.dash.accountsTitle} />
-            <CardBody className="grid gap-2 py-4">
-              <span>
-                <Badge>{c.dash.accountsNone}</Badge>
-              </span>
-              <p className="m-0 text-xs text-muted-foreground">{c.dash.accountsBody}</p>
-            </CardBody>
-          </Card>
+          <UsagePanel usage={model.usage} now={model.generatedAt} c={c} />
           <Card data-testid="team-mix">
             <CardHeader title={c.dash.mixTitle} aside={<Badge>{num(total)}</Badge>} />
             <CardBody className="grid gap-3 py-4">
