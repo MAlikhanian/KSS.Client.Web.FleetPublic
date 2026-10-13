@@ -1,4 +1,10 @@
-/* The public Fleet site. One family, three weights, all served from this host. */
+/* The public Fleet site: an admin-dashboard look built from our own components and Tailwind utilities.
+   Every colour is a role token (a CSS variable), so a component never names a colour of its own. */
+
+@import 'tailwindcss';
+
+/* Theme: follows the system setting unless the visitor picked one ([data-theme] on <html>). */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 @font-face {
   font-family: 'Vazirmatn';
@@ -20,406 +26,134 @@
 }
 
 :root {
-  --paper: #f3f5f8;
-  --band: #e7ebf1;
-  --ink: #172233;
-  --muted: #5a6677;
-  --line: #c9d0db;
-
-  /* The one accent colour: activity bars. No per-person colour anywhere. */
-  --accent: #2f5bd3;
-
-  --measure: 36rem;
-  --gutter: clamp(1.25rem, 4vw, 2.5rem);
+  color-scheme: light;
+  --background: #f3f5f8;
+  --foreground: #172233;
+  --card: #ffffff;
+  --card-foreground: #172233;
+  --muted: #eef1f5;
+  --muted-foreground: #5a6677;
+  --border: #d9dee6;
+  --primary: #2f5bd3;
+  --primary-foreground: #ffffff;
+  --success: #177245;
+  --warning: #8f5c12;
+  --danger: #b23a33;
+  /* The sidebar is dark in BOTH themes, with one teal accent for its active items only. */
+  --sidebar: #1b2533;
+  --sidebar-foreground: #c3cdda;
+  --sidebar-muted: #8a97a8;
+  --sidebar-active: #243246;
+  --sidebar-active-foreground: #ffffff;
+  --sidebar-accent: #2dd4bf;
+  --ring: #2f5bd3;
+  --radius: 0.75rem;
+  --radius-sm: 0.5rem;
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+/* Dark tokens: the system preference when no choice was made, or an explicit choice. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --background: #0f1520;
+    --foreground: #e6ebf2;
+    --card: #161e2b;
+    --card-foreground: #e6ebf2;
+    --muted: #1c2533;
+    --muted-foreground: #9aa6b8;
+    --border: #2a3546;
+    --primary: #7f9ff3;
+    --primary-foreground: #0f1520;
+    --success: #3fbf7f;
+    --warning: #e0a43a;
+    --danger: #f07c75;
+    --ring: #7f9ff3;
+  }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --background: #0f1520;
+  --foreground: #e6ebf2;
+  --card: #161e2b;
+  --card-foreground: #e6ebf2;
+  --muted: #1c2533;
+  --muted-foreground: #9aa6b8;
+  --border: #2a3546;
+  --primary: #7f9ff3;
+  --primary-foreground: #0f1520;
+  --success: #3fbf7f;
+  --warning: #e0a43a;
+  --danger: #f07c75;
+  --ring: #7f9ff3;
 }
 
-html {
-  -webkit-text-size-adjust: 100%;
+/* The tokens as Tailwind theme values: bg-card, text-muted-foreground, border-border, rounded-card, ... */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-foreground: var(--sidebar-active-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-ring: var(--ring);
+  --radius-card: var(--radius);
+  --radius-control: var(--radius-sm);
+  --font-sans: 'Vazirmatn', system-ui, sans-serif;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
 }
 
-body {
-  margin: 0;
-  background: var(--paper);
-  color: var(--ink);
-  font-family: 'Vazirmatn', system-ui, sans-serif;
-  font-size: 1.0625rem;
-  line-height: 1.8;
+/* Dark theme only: the dark sidebar needs an edge against a dark page. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .sidebar-edge {
+    border-inline-end: 1px solid var(--border);
+  }
+}
+:root[data-theme='dark'] .sidebar-edge {
+  border-inline-end: 1px solid var(--border);
 }
 
-a {
-  color: inherit;
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.7;
+  }
+  /* Sections land below the sticky top bar when reached from the menu. */
+  [id] {
+    scroll-margin-top: 4.5rem;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
 }
 
-a:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 3px;
-  border-radius: 2px;
-}
-
-.wrap {
-  width: 100%;
-  max-width: 68rem;
-  margin-inline: auto;
-  padding-inline: var(--gutter);
-}
-
-/* ── Header ─────────────────────────────────────────────────────────────── */
-
-.site-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-block: 1.5rem;
-}
-
-.brand {
-  font-weight: 800;
-  font-size: 1.125rem;
-}
-
-.lang-switch {
-  font-weight: 600;
-  font-size: 0.9375rem;
-  text-decoration: none;
-  padding: 0.25rem 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-}
-
-.lang-switch:hover {
-  border-color: var(--ink);
-}
-
-/* ── Hero ───────────────────────────────────────────────────────────────── */
-
-/* A short band: the team chart below it starts on the first screen. */
-.hero {
-  padding-block: 0.5rem 1.75rem;
-}
-
-.hero h1 {
-  margin: 0 0 0.5rem;
-  font-weight: 800;
-  font-size: clamp(1.5rem, 3vw, 2rem);
-  line-height: 1.3;
-}
-
-/* Latin headline only: tighter tracking. Persian keeps its natural joins. */
-:lang(en) .hero h1 {
-  letter-spacing: -0.01em;
-  line-height: 1.2;
-}
-
-.intro {
-  margin: 0;
-  max-width: var(--measure);
-  font-size: 1rem;
-  color: var(--muted);
-}
-
-/* ── Team chart ─────────────────────────────────────────────────────────── */
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
-.chart,
-.activity {
-  border-block-start: 1px solid var(--line);
-  padding-block: clamp(2.5rem, 6vw, 4.5rem);
-}
-
-.chart {
-  background: var(--band);
-}
-
-.section-head {
-  display: grid;
-  gap: 0.5rem;
-  justify-items: start;
-  margin-block-end: 2rem;
-}
-
-.section-head h2,
-.chart-notice h2 {
-  margin: 0;
-  font-weight: 800;
-  font-size: clamp(1.5rem, 3.5vw, 2rem);
-  line-height: 1.3;
-}
-
-.section-head p,
-.chart-notice p {
-  margin: 0;
-  max-width: var(--measure);
-  color: var(--muted);
-}
-
-.pill {
-  display: inline-block;
-  font-size: 0.875rem;
-  font-weight: 600;
-  padding: 0.125rem 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--paper);
-}
-
-/* The dense chart: a leadership strip, then boxes in columns sized to their
-   content, so the boxes pack top to bottom and no area is left empty. */
-.strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.375rem 0.5rem;
-  padding: 0.625rem 0.75rem;
-  margin-block-end: 1rem;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 0.875rem;
-}
-
-.strip-label {
-  font-size: 0.8125rem;
-  font-weight: 800;
-  color: var(--muted);
-  margin-inline-end: 0.25rem;
-}
-
-.strip ul {
-  display: contents;
-  list-style: none;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  min-width: 0;
-  max-width: 100%;
-  padding: 0.125rem 0.625rem 0.125rem 0.125rem;
-  padding-inline: 0.125rem 0.625rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--paper);
-}
-
-.boxes {
-  column-width: 14rem;
-  column-gap: 0.75rem;
-}
-
-.box {
-  break-inside: avoid;
-  margin-block-end: 0.75rem;
-  padding: 0.5rem 0.25rem 0.375rem;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 0.75rem;
-}
-
-.box h3 {
-  margin: 0;
-  padding: 0 0.5rem 0.25rem;
-  font-size: 0.875rem;
-  font-weight: 800;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-.box ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.0625rem;
-}
-
-.row {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  min-width: 0;
-  padding: 0.125rem 0.5rem;
-  border-radius: 0.5rem;
-}
-
-.row-lead {
-  background: var(--paper);
-}
-
-.line-text {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: 0.375rem;
-  min-width: 0;
-  font-size: 0.8125rem;
-  line-height: 1.5rem;
-}
-
-.line-name {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.line-name.strong {
-  font-weight: 800;
-}
-
-.line-role {
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-
-.line-reports {
-  flex-basis: 100%;
-  color: var(--muted);
-  font-size: 0.75rem;
-  line-height: 1.25rem;
-  overflow-wrap: anywhere;
-}
-
-.updated {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-
-.initial {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: 999px;
-  background: var(--muted);
-  color: #fff;
-  font-weight: 800;
-  font-size: 0.6875rem;
-  line-height: 1;
-}
-
-/* ── Activity ───────────────────────────────────────────────────────────── */
-
-.activity-grid {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
-}
-
-.activity-card {
-  display: grid;
-  gap: 1rem;
-  min-width: 0;
-  padding: 1.125rem;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 0.875rem;
-}
-
-.activity-other {
-  background: transparent;
-  border-style: dashed;
-}
-
-.activity-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-  min-width: 0;
-}
-
-.activity-top h3 {
-  margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 800;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.activity-note {
-  font-size: 0.8125rem;
-  color: var(--muted);
-}
-
-.bars {
-  flex: none;
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  width: 6rem;
-  height: 2rem;
-}
-
-.bars span {
-  flex: 1;
-  min-width: 0;
-  border-radius: 2px;
-  background: var(--accent);
-}
-
-.bars .bar-zero {
-  background: var(--line);
-}
-
-.activity-card dl {
-  margin: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-}
-
-.activity-card dl div {
-  padding: 0.625rem 0.75rem;
-  background: var(--paper);
-  border-radius: 0.625rem;
-}
-
-.activity-card dt {
-  font-size: 0.8125rem;
-  color: var(--muted);
-}
-
-.activity-card dd {
-  margin: 0;
-  font-weight: 800;
-  font-size: 1.375rem;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.3;
-}
-
-/* ── Notice (no chart to show) ──────────────────────────────────────────── */
-
-.notice-inner {
-  display: grid;
-  gap: 0.75rem;
-}
-
-/* ── Footer ─────────────────────────────────────────────────────────────── */
-
-.site-footer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 2rem;
-  justify-content: space-between;
-  padding-block: 2rem 2.5rem;
-  font-size: 0.875rem;
-  color: var(--muted);
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }

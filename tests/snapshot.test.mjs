@@ -12,7 +12,7 @@ import { existsSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ORDINAL_BASE, PROJECT_CANARY, makeSnapshot, startMock } from './support/mock-snapshot.mjs';
+import { ORDINAL_BASE, PROJECT_CANARY, TEAM_TITLES, makeSnapshot, startMock } from './support/mock-snapshot.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { parseSnapshot, buildChart } = await import('../components/snapshot.ts');
@@ -26,7 +26,7 @@ const FIRST_NAMES = new Set(SAMPLE.agents.map((a) => a.firstName));
 const ROLE_LABELS = new Set([...SAMPLE.roles, ...Object.values(ROLE_NAMES_FA)]);
 const stripTags = (html) => html.replace(/<[^>]+>/g, '').replace(/&#x27;|&#39;/g, "'").trim();
 /** Every lead-box title on a page, split into its parts. */
-const leadTitles = (html) => [...html.matchAll(/<h3 data-box-title="lead">([\s\S]*?)<\/h3>/g)].map((m) => stripTags(m[1]).split(' · '));
+const leadTitles = (html) => [...html.matchAll(/<h3[^>]*data-box-title="lead"[^>]*>([\s\S]*?)<\/h3>/g)].map((m) => stripTags(m[1]).split(' · '));
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -96,6 +96,11 @@ describe('snapshot parser', () => {
       [(b) => (b.activity.buckets[0].direction = 'up'), 'ACTIVITY_DIRECTION_INVALID'],
       [(b) => (b.activity.from = 'yesterday'), 'ACTIVITY_RANGE_INVALID'],
       [(b) => (b.generatedAt = 'soon'), 'GENERATED_AT_INVALID'],
+      [(b) => (b.agents[0].project = { en: 'x', fa: '' }), 'AGENT_PROJECT_INVALID'],
+      [(b) => (b.agents[0].project = 'a plain string'), 'AGENT_PROJECT_INVALID'],
+      [(b) => (b.agents[0].lastActiveAt = 'recently'), 'AGENT_LAST_ACTIVE_INVALID'],
+      [(b) => (b.agents[0].activity7d = [1, 2, 3]), 'AGENT_ACTIVITY_INVALID'],
+      [(b) => (b.agents[0].activity7d = [1, 2, 3, 4, 5, 6, -1]), 'AGENT_ACTIVITY_INVALID'],
     ]) {
       const body = makeSnapshot('ok');
       mutate(body);
@@ -105,6 +110,16 @@ describe('snapshot parser', () => {
     }
     assert.equal(parseSnapshot(null).ok, false);
     assert.equal(parseSnapshot([]).ok, false);
+  });
+  test('the three optional fields: absent today (null), parsed when the service sends them', () => {
+    const today = parseSnapshot(makeSnapshot('ok')).snapshot;
+    assert.ok(today.agents.every((a) => a.project === null && a.lastActiveAt === null && a.activity7d === null), 'absent means null');
+    const full = parseSnapshot(makeSnapshot('full')).snapshot;
+    assert.equal(full.agents.length, 103);
+    assert.ok(full.agents.every((a) => typeof a.lastActiveAt === 'string' && a.activity7d.length === 7), 'every agent carries a time and 7 counts');
+    const titled = full.agents.filter((a) => a.project !== null);
+    assert.ok(titled.length > 0 && titled.every((a) => a.project.en && a.project.fa), 'a title carries both languages');
+    assert.ok(!JSON.stringify(full).includes(PROJECT_CANARY), 'an internal project name is never kept');
   });
   test('generatedAt: optional; missing means null, a valid time is kept as ISO UTC', () => {
     const body = makeSnapshot('ok');
@@ -131,6 +146,20 @@ describe('snapshot parser', () => {
     assert.equal(m.strip.length + m.boxes.reduce((acc, b) => acc + b.size, 0), 103, 'every agent placed exactly once');
     assert.doesNotMatch(JSON.stringify(m), ORDINAL);
     assert.ok(m.other, 'the "other" row is present');
+  });
+  test('full fields in the model: titled teams, untitled ones keep the lead title, team activity sums, active-now count', () => {
+    const m = buildChart(parseSnapshot(makeSnapshot('full')).snapshot);
+    const lead = m.boxes.filter((b) => b.kind === 'lead');
+    assert.equal(lead.length, 17);
+    const published = TEAM_TITLES.filter(Boolean).length;
+    assert.equal(lead.filter((b) => b.project !== null).length, published, 'one title per published team');
+    assert.equal(lead.filter((b) => b.project === null).length, 17 - published, 'unpublished teams carry no title');
+    assert.ok(m.boxes.every((b) => Array.isArray(b.activity7d) && b.activity7d.length === 7), 'every card sums its members');
+    assert.equal(typeof m.activeNow, 'number');
+    assert.ok(m.activeNow > 0 && m.activeNow < 103);
+    const today = buildChart(parseSnapshot(makeSnapshot('ok')).snapshot);
+    assert.equal(today.activeNow, null, 'no times served: no active-now figure');
+    assert.ok(today.boxes.every((b) => b.activity7d === null), 'no counts served: no team activity');
   });
   test('safe fallback: with no reporting lines for engineers, they share ONE Engineering box', () => {
     const m = buildChart(parseSnapshot(makeSnapshot('noreports')).snapshot);
@@ -180,10 +209,10 @@ describe('served pages against the snapshot service, every state', () => {
     for (const route of ['/', '/en']) {
       const { html } = await page(route);
       const fa = route === '/';
-      const rows = [...html.matchAll(/class="line-role">([\s\S]*?)<\/span>/g)].map((m) => stripTags(m[1]));
+      const rows = [...html.matchAll(/class="line-role[^"]*">([\s\S]*?)<\/span>/g)].map((m) => stripTags(m[1]));
       assert.equal(rows.length, 103, route + ': every person has a role line');
       assert.ok(rows.every((r) => r.includes(' · ')), route + ': each role line carries the department');
-      assert.equal((html.match(/class="line-reports"/g) ?? []).length, 102, route + ': everyone but the CEO has a reports-to line');
+      assert.equal((html.match(/class="line-reports[ "]/g) ?? []).length, 102, route + ': everyone but the CEO has a reports-to line');
       assert.ok(html.includes(fa ? 'گزارش به ' : 'Reports to '), route + ': reports-to wording');
       assert.match(html, /data-testid="chart-updated"><time dateTime="\d{4}-\d{2}-\d{2}T/, route + ': the update time is shown');
       assert.ok(html.includes(fa ? 'به وقت تهران' : 'UTC'), route + ': the update time names its zone');
@@ -197,6 +226,45 @@ describe('served pages against the snapshot service, every state', () => {
         assert.deepEqual(rows.filter((r) => /[A-Za-z]/.test(r)), [], 'fa: no role or department left in English');
       }
     }
+  });
+
+  test('dashboard chrome: a section menu whose every link lands on a section, a theme switch, the theme set before paint', async () => {
+    mock.state.mode = 'ok';
+    for (const route of ['/', '/en']) {
+      const { html } = await page(route);
+      const side = html.slice(html.indexOf('data-testid="sidebar"'), html.indexOf('</aside>'));
+      const links = [...side.matchAll(/href="#([a-z]+)"/g)].map((m) => m[1]);
+      assert.deepEqual(links, ['overview', 'leadership', 'engineering', 'network', 'departments', 'activity'], route + ': the menu lists the sections');
+      for (const id of links) assert.match(html, new RegExp('id="' + id + '"'), route + ': #' + id + ' exists');
+      assert.ok(html.includes('data-testid="section-menu"'), route + ': the phone section menu is there');
+      assert.ok(html.includes('data-testid="theme-toggle"'), route + ': the theme switch is there');
+      assert.ok(html.includes("localStorage.getItem('fleet-theme')"), route + ': a stored theme is applied before paint');
+      assert.equal((html.match(/data-testid="stat"/g) ?? []).length, 3, route + ': three stat tiles without the active-now figure');
+      assert.ok(!html.includes('data-testid="last-active"'), route + ': no last-active text when the service sends none');
+      assert.ok(!html.includes('data-testid="team-activity"'), route + ': no team graph when the service sends none');
+    }
+  });
+
+  test('full fields on the page: public titles in the page language, last active, team graphs, the active-now tile', async () => {
+    mock.state.mode = 'full';
+    for (const route of ['/', '/en']) {
+      const { html } = await page(route);
+      const lang = route === '/' ? 'fa' : 'en';
+      for (const t of TEAM_TITLES.filter(Boolean)) assert.ok(html.includes(t[lang].replace(/&/g, '&amp;')), route + ': shows "' + t[lang] + '"');
+      const titles = leadTitles(html);
+      assert.equal(titles.length, 17);
+      const published = TEAM_TITLES.filter(Boolean).length;
+      assert.equal(titles.filter((p) => p.length === 2).length, published, route + ': a titled team is "title · count"');
+      assert.equal(titles.filter((p) => p.length === 3).length, 17 - published, route + ': an untitled team keeps "lead · role · count"');
+      assert.equal((html.match(/data-testid="team-lead"/g) ?? []).length, published, route + ': a titled card still names its lead');
+      assert.equal((html.match(/data-testid="last-active"/g) ?? []).length, 103, route + ': every person shows when she was last active');
+      assert.ok((html.match(/data-testid="team-activity"/g) ?? []).length >= 17, route + ': team graphs');
+      assert.equal((html.match(/data-testid="stat"/g) ?? []).length, 4, route + ': the active-now tile');
+      assert.ok(!html.includes(PROJECT_CANARY), route + ': no internal project name');
+      assert.ok(html.includes(lang === 'fa' ? 'کمتر از ۳' : 'fewer than 3'), route + ': a suppressed day reads as fewer than 3, never as none');
+      assert.ok(html.includes(lang === 'fa' ? 'دست‌کم ' : 'at least '), route + ': a total over suppressed days is a lower bound');
+    }
+    mock.state.mode = 'ok';
   });
 
   test('box titles: a lead box is first name · role · count and NOTHING else; no project ever reaches a page', async () => {
@@ -225,7 +293,7 @@ describe('served pages against the snapshot service, every state', () => {
       assert.equal(leadTitles(html).length, 0);
       const eng = route === '/' ? 'مهندسی' : 'Engineering';
       assert.ok(
-        [...html.matchAll(/<h3 data-box-title="department">([\s\S]*?)<\/h3>/g)].some((m) => stripTags(m[1]).startsWith(eng + ' · ')),
+        [...html.matchAll(/<h3[^>]*data-box-title="department"[^>]*>([\s\S]*?)<\/h3>/g)].some((m) => stripTags(m[1]).startsWith(eng + ' · ')),
         `${route}: one "${eng}" box`,
       );
     }

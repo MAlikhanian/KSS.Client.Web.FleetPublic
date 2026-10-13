@@ -6,7 +6,14 @@
  * role and department names, a per-response ordinal (`n`) that only links an
  * agent to its manager, and activity counts per department and day. It carries
  * no presence field. A colour field, if the service still sends one, is ignored:
- * the page shows no per-agent colour. The ordinal is never rendered; it exists
+ * the page shows no per-agent colour.
+ *
+ * Three OPTIONAL fields per agent light the page up when the service sends them,
+ * and the page renders in full without them:
+ *  - project: the team's PUBLIC title in both languages, { en, fa } (a generic
+ *    product description, never a customer or code name), or null;
+ *  - lastActiveAt: when the agent was last active (UTC, minute precision), or null;
+ *  - activity7d: messages per day over the last 7 days, oldest first, or null. The ordinal is never rendered; it exists
  * only to build the reporting lines.
  *
  * Anything that does not match is REJECTED as a whole, never partly rendered:
@@ -20,6 +27,15 @@ export interface PublicAgent {
   role: string;
   department: string;
   reportsTo: number | null;
+  project: PublicTitle | null;
+  lastActiveAt: string | null;
+  activity7d: number[] | null;
+}
+
+/** A public title, served in both languages. */
+export interface PublicTitle {
+  en: string;
+  fa: string;
 }
 
 export interface ActivityBucket {
@@ -78,7 +94,27 @@ export function parseSnapshot(body: unknown): ParseResult {
     if (a.reportsTo !== null && a.reportsTo !== undefined && reportsTo === null) return { ok: false, reason: 'AGENT_REPORTSTO_INVALID' };
     if (seen.has(n)) return { ok: false, reason: 'AGENT_ORDINAL_DUPLICATE' };
     seen.add(n);
-    agents.push({ n, firstName, role, department, reportsTo });
+
+    let project: PublicTitle | null = null;
+    if (a.project !== undefined && a.project !== null) {
+      const en = isObj(a.project) ? text(a.project.en) : null;
+      const fa = isObj(a.project) ? text(a.project.fa) : null;
+      if (en === null || fa === null) return { ok: false, reason: 'AGENT_PROJECT_INVALID' };
+      project = { en, fa };
+    }
+    let lastActiveAt: string | null = null;
+    if (a.lastActiveAt !== undefined && a.lastActiveAt !== null) {
+      const t = typeof a.lastActiveAt === 'string' ? Date.parse(a.lastActiveAt) : NaN;
+      if (Number.isNaN(t)) return { ok: false, reason: 'AGENT_LAST_ACTIVE_INVALID' };
+      lastActiveAt = new Date(t).toISOString();
+    }
+    let activity7d: number[] | null = null;
+    if (a.activity7d !== undefined && a.activity7d !== null) {
+      const v = a.activity7d;
+      if (!Array.isArray(v) || v.length !== 7 || v.some((x) => count(x) === null)) return { ok: false, reason: 'AGENT_ACTIVITY_INVALID' };
+      activity7d = v as number[];
+    }
+    agents.push({ n, firstName, role, department, reportsTo, project, lastActiveAt, activity7d });
   }
 
   let generatedAt: string | null = null;
@@ -155,6 +191,8 @@ function daysBetween(from: string, to: string): string[] {
 const LEADERSHIP_DEPARTMENTS = new Set(['executive', 'executive office']);
 const LEADERSHIP_ROLES = new Set(['ceo', 'coo', 'cto', 'cno']);
 const BY_LEAD_DEPARTMENTS = new Set(['engineering']);
+/** "Active now" means active in the last 15 minutes. */
+export const ACTIVE_WINDOW_MS = 15 * 60_000;
 const norm = (s: string) => s.trim().toLowerCase().replace(/’/g, "'");
 
 export interface ChartPerson {
@@ -163,13 +201,22 @@ export interface ChartPerson {
   department: string;
   /** The first name of the person this one reports to, or null. */
   reportsTo: string | null;
+  lastActiveAt: string | null;
+  activity7d: number[] | null;
   /** Nesting under the box's first person: 0 for the lead, 1 for her reports, ... */
   depth: number;
 }
 
 export type ChartBox =
-  | { kind: 'lead'; lead: ChartPerson; people: ChartPerson[]; size: number }
-  | { kind: 'department'; department: string; people: ChartPerson[]; size: number };
+  | { kind: 'lead'; lead: ChartPerson; project: PublicTitle | null; people: ChartPerson[]; size: number; activity7d: number[] | null }
+  | { kind: 'department'; department: string; people: ChartPerson[]; size: number; activity7d: number[] | null };
+
+/** Day-by-day totals over the people who report one; null when nobody does. */
+export function sumActivity(people: { activity7d: number[] | null }[]): number[] | null {
+  const known = people.map((p) => p.activity7d).filter((v): v is number[] => v !== null);
+  if (!known.length) return null;
+  return Array.from({ length: 7 }, (_, i) => known.reduce((acc, v) => acc + v[i], 0));
+}
 
 export interface ChartDepartmentActivity {
   department: string | null;
@@ -181,6 +228,8 @@ export interface ChartDepartmentActivity {
 export interface ChartModel {
   generatedAt: string | null;
   strip: ChartPerson[];
+  /** How many agents were active in the 15 minutes before generatedAt; null when no agent reports a time. */
+  activeNow: number | null;
   boxes: ChartBox[];
   total: number;
   days: string[];
@@ -203,6 +252,8 @@ export function buildChart(s: Snapshot): ChartModel {
     role: a.role,
     department: a.department,
     reportsTo: manager(a)?.firstName ?? null,
+    lastActiveAt: a.lastActiveAt,
+    activity7d: a.activity7d,
     depth,
   });
   const isLeadRole = (a: PublicAgent) => LEADERSHIP_ROLES.has(norm(a.role));
@@ -239,7 +290,7 @@ export function buildChart(s: Snapshot): ChartModel {
         placed.add(lead.n);
         const mark = (p: PublicAgent) => (children.get(p.n) ?? []).filter((k) => within.has(k.n)).forEach((k) => (placed.add(k.n), mark(k)));
         mark(lead);
-        boxes.push({ kind: 'lead', lead: people[0], people, size: people.length });
+        boxes.push({ kind: 'lead', lead: people[0], project: lead.project, people, size: people.length, activity7d: sumActivity(people) });
       }
       const rest = members.filter((a) => !placed.has(a.n));
       if (rest.length) {
@@ -250,7 +301,7 @@ export function buildChart(s: Snapshot): ChartModel {
           return !m || !restSet.has(m.n);
         });
         const people = heads.flatMap((h) => [person(h, 0), ...walk(h, restSet, 1)]);
-        boxes.push({ kind: 'department', department, people, size: rest.length });
+        boxes.push({ kind: 'department', department, people, size: rest.length, activity7d: sumActivity(people) });
       }
       continue;
     }
@@ -260,7 +311,7 @@ export function buildChart(s: Snapshot): ChartModel {
       return !m || !within.has(m.n);
     });
     const people = heads.flatMap((h) => [person(h, 0), ...walk(h, within, 1)]);
-    boxes.push({ kind: 'department', department, people, size: members.length });
+    boxes.push({ kind: 'department', department, people, size: members.length, activity7d: sumActivity(people) });
   }
 
   const days = s.days;
@@ -278,9 +329,14 @@ export function buildChart(s: Snapshot): ChartModel {
     .sort((a, b) => b.sent + b.received - (a.sent + a.received));
   const otherRow = deptActivity(null);
 
+  const withTime = s.agents.filter((a) => a.lastActiveAt !== null);
+  const at = s.generatedAt ? Date.parse(s.generatedAt) : Date.now();
+  const activeNow = withTime.length ? withTime.filter((a) => at - Date.parse(a.lastActiveAt as string) <= ACTIVE_WINDOW_MS).length : null;
+
   return {
     generatedAt: s.generatedAt,
     strip: stripAgents.map((a) => person(a, 0)),
+    activeNow,
     boxes,
     total: s.agents.length,
     days,

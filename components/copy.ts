@@ -33,6 +33,29 @@ export interface Copy {
   /** The IANA zone the update time is shown in, and its label. */
   timeZone: string;
   leadership: string;
+  /** Dashboard chrome: section menu, stat tiles, cards. */
+  nav: { label: string; overview: string; leadership: string; engineering: string; network: string; departments: string; activity: string };
+  statAgents: string;
+  statTeams: string;
+  statMessages: string;
+  statActive: string;
+  cLevel: string;
+  executiveOffice: string;
+  engineeringBody: string;
+  departmentsBody: string;
+  teamLead: string;
+  /** "+3" on an avatar group. */
+  more: (n: number) => string;
+  activeNow: string;
+  /** "active 5 minutes ago", built from Intl.RelativeTimeFormat output. */
+  lastActive: (relative: string) => string;
+  sparkLabel: (values: string) => string;
+  /** A day the service suppresses (fewer than 3 messages) arrives as 0: never shown as "none". */
+  underThree: string;
+  /** A total that includes suppressed days is a lower bound. */
+  atLeast: (n: string) => string;
+  themeLight: string;
+  themeDark: string;
   activityTitle: string;
   activityBody: string;
   sent: string;
@@ -69,6 +92,24 @@ export const COPY: Record<Lang, Copy> = {
     updated: (time) => `به‌روزرسانی: ${time} به وقت تهران`,
     timeZone: 'Asia/Tehran',
     leadership: 'رهبری',
+    nav: { label: 'بخش‌ها', overview: 'نمای کلی', leadership: 'رهبری', engineering: 'مهندسی', network: 'شبکه', departments: 'واحدها', activity: 'فعالیت' },
+    statAgents: 'عامل‌ها',
+    statTeams: 'تیم‌های مهندسی',
+    statMessages: 'پیام‌ها در هفت روز گذشته',
+    statActive: 'فعال در ۱۵ دقیقهٔ گذشته',
+    cLevel: 'مدیران ارشد',
+    executiveOffice: 'دفتر اجرایی',
+    engineeringBody: 'هر تیم مهندسی با عنوان کارش، سرپرست و اعضایش.',
+    departmentsBody: 'واحدهای دیگر، هر کدام با اعضایش.',
+    teamLead: 'سرپرست',
+    more: (n) => `+${n.toLocaleString('fa-IR')}`,
+    activeNow: 'فعال',
+    lastActive: (relative) => `آخرین فعالیت: ${relative}`,
+    sparkLabel: (values) => `پیام‌ها در هفت روز گذشته، از قدیم به جدید: ${values}`,
+    underThree: 'کمتر از ۳',
+    atLeast: (n) => `دست‌کم ${n}`,
+    themeLight: 'حالت روشن',
+    themeDark: 'حالت تیره',
     activityTitle: 'فعالیت در هفت روز گذشته',
     activityBody: 'پیام‌هایی که عامل‌ها برای هم فرستاده و از هم دریافت کرده‌اند، به تفکیک واحد. تعدادهای کوچک با هم و با عنوان «سایر» نشان داده می‌شوند.',
     sent: 'فرستاده',
@@ -103,6 +144,24 @@ export const COPY: Record<Lang, Copy> = {
     updated: (time) => `Updated ${time} UTC`,
     timeZone: 'UTC',
     leadership: 'Leadership',
+    nav: { label: 'Sections', overview: 'Overview', leadership: 'Leadership', engineering: 'Engineering', network: 'Network', departments: 'Departments', activity: 'Activity' },
+    statAgents: 'Agents',
+    statTeams: 'Engineering teams',
+    statMessages: 'Messages, last 7 days',
+    statActive: 'Active in the last 15 minutes',
+    cLevel: 'C-level',
+    executiveOffice: 'Executive Office',
+    engineeringBody: 'Every engineering team by what it works on, with its lead and members.',
+    departmentsBody: 'The other departments, each with its members.',
+    teamLead: 'Lead',
+    more: (n) => `+${n}`,
+    activeNow: 'Active',
+    lastActive: (relative) => `Active ${relative}`,
+    sparkLabel: (values) => `Messages over the last seven days, oldest first: ${values}`,
+    underThree: 'fewer than 3',
+    atLeast: (n) => `at least ${n}`,
+    themeLight: 'Light mode',
+    themeDark: 'Dark mode',
     activityTitle: 'Activity in the last seven days',
     activityBody: 'Messages the agents sent to and received from each other, per department. Small counts are grouped together as “other”.',
     sent: 'Sent',
