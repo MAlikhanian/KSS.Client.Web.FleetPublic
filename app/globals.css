@@ -49,6 +49,12 @@
   --ring: #2f5bd3;
   --radius: 0.75rem;
   --radius-sm: 0.5rem;
+  /* Department colours: GRAPHIC marks only (card accents, large numbers), never body text and never a person.
+     Each is >= 3:1 against card, background and muted in its theme (measured). */
+  --dept-executive: #4f46e5;
+  --dept-engineering: #2563eb;
+  --dept-network: #0d9488;
+  --dept-support: #db2777;
 }
 
 /* Dark tokens: the system preference when no choice was made, or an explicit choice. */
@@ -68,6 +74,10 @@
     --warning: #e0a43a;
     --danger: #f07c75;
     --ring: #7f9ff3;
+    --dept-executive: #8b8ff7;
+    --dept-engineering: #60a5fa;
+    --dept-network: #2dd4bf;
+    --dept-support: #f472b6;
   }
 }
 :root[data-theme='dark'] {
@@ -85,6 +95,10 @@
   --warning: #e0a43a;
   --danger: #f07c75;
   --ring: #7f9ff3;
+  --dept-executive: #8b8ff7;
+  --dept-engineering: #60a5fa;
+  --dept-network: #2dd4bf;
+  --dept-support: #f472b6;
 }
 
 /* The tokens as Tailwind theme values: bg-card, text-muted-foreground, border-border, rounded-card, ... */

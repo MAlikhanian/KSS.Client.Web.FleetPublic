@@ -1,15 +1,17 @@
+import { readContact } from './contact';
 import { COPY, type Lang } from './copy';
 import { jsonLd } from './site';
 import { buildChart } from './snapshot';
 import { loadSnapshot } from './snapshot-server';
-import { ChartNotice, sectionsOf, TeamChart, type SectionKey } from './team-chart';
+import { Hero, HowItWorks, storyNumbers, WhatTheyDo } from './story';
+import { ChartNotice, TeamChart } from './team-chart';
 import { ThemeToggle } from './theme-toggle';
 
 /**
- * The public page, as a dashboard: a section menu (a sidebar from lg up, a wrapping row above the content
- * below that), a top bar, then the cards. A server component; the only client JavaScript is the theme
- * switch. The team data is fetched on the server from the public snapshot service; the browser never calls
- * that service.
+ * The public page. It first says what this is (the hero), what the agents do and how a request is handled, then
+ * shows the live team. A server component; the only client JavaScript is the theme switch. The team data is
+ * fetched on the server from the public snapshot service; the browser never calls that service. The contact
+ * details come from the deployment's environment (see contact.ts), never from the source.
  *
  * The page is cached (ISR). A render without a snapshot is NEVER kept as a good page:
  *  - at build time there is no service to ask, so the build renders the short notice; that page is replaced
@@ -28,8 +30,8 @@ export async function SitePage({ lang }: { lang: Lang }) {
   const result = await loadSnapshot();
   if (result.state === 'unavailable' && process.env.NEXT_PHASE !== 'phase-production-build') throw new SnapshotUnavailableError();
   const model = result.state === 'ok' ? buildChart(result.snapshot) : null;
-  const sections = sectionsOf(model);
-  const label: Record<SectionKey, string> = c.nav;
+  const numbers = storyNumbers(model);
+  const contact = readContact();
   const updated = model?.generatedAt
     ? new Date(model.generatedAt).toLocaleString(c.locale, {
         timeZone: c.timeZone,
@@ -41,48 +43,36 @@ export async function SitePage({ lang }: { lang: Lang }) {
         hourCycle: 'h23',
       })
     : null;
-
-  const menu = (variant: 'side' | 'top') => (
-    <nav aria-label={c.nav.label} className={variant === 'side' ? 'mt-6' : ''}>
-      {variant === 'side' ? <p className="m-0 mb-1 px-3 text-xs font-semibold tracking-wide text-sidebar-muted uppercase">{c.nav.label}</p> : null}
-      <ul className={variant === 'side' ? 'm-0 grid list-none gap-0.5 p-0' : 'm-0 flex list-none flex-wrap gap-2 p-0'}>
-        {sections.map((s) => (
-          <li key={s}>
-            <a
-              href={`#${s}`}
-              className={
-                variant === 'side'
-                  ? 'block rounded-control px-3 py-2 text-sm font-semibold text-sidebar-foreground no-underline hover:bg-sidebar-active/60 hover:text-sidebar-active-foreground'
-                  : 'inline-block rounded-full px-3 py-1 text-sm font-semibold text-sidebar-foreground no-underline hover:bg-sidebar-active/60 hover:text-sidebar-active-foreground'
-              }
-            >
-              {label[s]}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  );
+  const nav: [string, string][] = [
+    ['what', c.story.nav.what],
+    ['how', c.story.nav.how],
+    ['team', c.story.nav.team],
+  ];
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
+    <div className="min-h-screen">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(lang) }} />
-      <aside className="sidebar-edge hidden bg-sidebar px-4 py-5 text-sidebar-foreground lg:sticky lg:top-0 lg:block lg:h-screen lg:overflow-y-auto" data-testid="sidebar">
-        <span className="brand block px-3 text-lg font-extrabold text-sidebar-active-foreground">{c.brand}</span>
-        {menu('side')}
-      </aside>
-
-      <div className="min-w-0">
-        <header className="sticky top-0 z-10 flex min-w-0 items-center gap-3 border-b border-border bg-card/95 px-4 py-2.5 backdrop-blur lg:px-6">
-          <span className="brand min-w-0 truncate font-extrabold lg:hidden">{c.brand}</span>
-          {updated && model?.generatedAt ? (
-            <p className="updated m-0 hidden min-w-0 truncate text-sm text-muted-foreground sm:block" data-testid="chart-updated">
-              <time dateTime={model.generatedAt}>{c.updated(updated)}</time>
-            </p>
-          ) : null}
-          <span className="ms-auto flex shrink-0 items-center gap-2">
+      {/* Sticky from tablet width up; on a phone the bar wraps to two rows and would cover the content. */}
+      <header className="z-10 bg-sidebar md:sticky md:top-0 text-sidebar-foreground" data-testid="topbar">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+          <span className="brand font-extrabold text-sidebar-active-foreground">{c.brand}</span>
+          <nav aria-label={c.story.nav.label} className="ms-auto" data-testid="section-menu">
+            <ul className="m-0 flex list-none flex-wrap gap-x-1 gap-y-1 p-0">
+              {nav.map(([id, label]) => (
+                <li key={id}>
+                  <a
+                    href={`#${id}`}
+                    className="inline-block rounded-control px-2.5 py-1 text-sm font-semibold text-sidebar-foreground no-underline hover:bg-sidebar-active/60 hover:text-sidebar-active-foreground"
+                  >
+                    {label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <span className="flex shrink-0 items-center gap-2">
             <a
-              className="lang-switch rounded-full border border-border px-3 py-1 text-sm font-semibold no-underline hover:bg-muted"
+              className="lang-switch rounded-full border border-sidebar-active px-3 py-1 text-sm font-semibold text-sidebar-active-foreground no-underline hover:bg-sidebar-active/60"
               href={c.switchHref}
               hrefLang={c.switchLang}
               lang={c.switchLang}
@@ -91,33 +81,25 @@ export async function SitePage({ lang }: { lang: Lang }) {
             </a>
             <ThemeToggle lightLabel={c.themeLight} darkLabel={c.themeDark} />
           </span>
-        </header>
-
-        <div className="bg-sidebar px-3 py-2 lg:hidden" data-testid="section-menu">
-          {menu('top')}
         </div>
+      </header>
 
-        <main className="grid gap-8 px-4 py-6 lg:px-6">
-          <section aria-labelledby="overview" className="grid gap-2">
-            <h1 id="overview" className="m-0 text-xl leading-snug font-extrabold lg:text-2xl">
-              {c.title}
-            </h1>
-            <p className="intro m-0 max-w-3xl text-muted-foreground">{c.intro}</p>
-            {updated && model?.generatedAt ? (
-              <p className="m-0 text-sm text-muted-foreground sm:hidden">
-                <time dateTime={model.generatedAt}>{c.updated(updated)}</time>
-              </p>
-            ) : null}
-          </section>
-
+      <main className="mx-auto grid max-w-6xl gap-10 px-4 py-6">
+        <Hero c={c} n={numbers} contact={contact} updated={updated} generatedAt={model?.generatedAt ?? null} />
+        <WhatTheyDo c={c} n={numbers} />
+        <HowItWorks c={c} />
+        <section aria-labelledby="team" className="grid gap-4">
+          <h2 id="team" className="m-0 text-xl font-extrabold">
+            {c.story.teamTitle}
+          </h2>
           {model ? <TeamChart model={model} c={c} /> : <ChartNotice c={c} state={result.state === 'empty' ? 'empty' : 'unavailable'} />}
-        </main>
+        </section>
+      </main>
 
-        <footer className="site-footer flex flex-wrap justify-between gap-x-8 gap-y-2 border-t border-border px-4 py-6 text-sm text-muted-foreground lg:px-6">
-          <span>{c.footerCopyright}</span>
-          <span>{c.footerCookies}</span>
-        </footer>
-      </div>
+      <footer className="site-footer mx-auto flex max-w-6xl flex-wrap justify-between gap-x-8 gap-y-2 border-t border-border px-4 py-6 text-sm text-muted-foreground">
+        <span>{c.footerCopyright}</span>
+        <span>{c.footerCookies}</span>
+      </footer>
     </div>
   );
 }

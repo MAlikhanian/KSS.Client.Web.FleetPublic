@@ -1,6 +1,6 @@
 import type { Copy } from './copy';
-import { DEPARTMENT_NAMES_FA, ROLE_NAMES_FA } from './names';
-import { type ChartBox, type ChartModel, type ChartPerson } from './snapshot';
+import { departmentTitle, roleTitle } from './public-titles';
+import { type ChartBox, type ChartModel, type ChartPerson, type TeamDay } from './snapshot';
 import { Avatar, AvatarGroup } from './ui/avatar';
 import { Badge } from './ui/badge';
 import { Card, CardBody, CardHeader } from './ui/card';
@@ -14,30 +14,20 @@ import { Stat } from './ui/stat';
  * per-person colour, no customer: a team is titled by its PUBLIC title from the service, or by its lead.
  */
 
-export type SectionKey = 'overview' | 'leadership' | 'engineering' | 'network' | 'departments' | 'activity';
-
 const norm = (s: string) => s.trim().toLowerCase();
 const isNetwork = (b: ChartBox) => b.kind === 'department' && norm(b.department) === 'network';
 
+/** Plain public titles (see public-titles.ts): the served names stay as they are. */
 export function names(c: Copy) {
-  const fa = c.lang === 'fa';
   return {
-    role: (served: string) => (fa && ROLE_NAMES_FA[served]) || served,
-    department: (served: string) => (fa && DEPARTMENT_NAMES_FA[served]) || served,
+    role: (served: string) => roleTitle(served, c.lang),
+    department: (served: string) => departmentTitle(served, c.lang),
   };
 }
 
-/** The sections this model fills, in page order: the menu shows exactly these. */
-export function sectionsOf(model: ChartModel | null): SectionKey[] {
-  if (!model) return ['overview'];
-  const out: SectionKey[] = ['overview'];
-  if (model.strip.length) out.push('leadership');
-  if (model.boxes.some((b) => !isNetwork(b) && (b.kind === 'lead' || norm(b.department) === 'engineering'))) out.push('engineering');
-  if (model.boxes.some(isNetwork)) out.push('network');
-  if (model.boxes.some((b) => b.kind === 'department' && !isNetwork(b) && norm(b.department) !== 'engineering')) out.push('departments');
-  if (model.activity.length || model.other) out.push('activity');
-  return out;
-}
+/** The count after a title: "· 4" in English; "(۴)" in Persian, where a middle dot beside a Persian digit can read as
+ * a zero (۰ is a dot), so "· ۴" could be read as ۴۰. */
+const countSuffix = (n: number, c: Copy) => (c.lang === 'fa' ? ` (${n.toLocaleString(c.locale)})` : ` · ${n.toLocaleString(c.locale)}`);
 
 function relative(iso: string, nowIso: string | null, c: Copy): string {
   const diff = Math.max(0, (nowIso ? Date.parse(nowIso) : Date.now()) - Date.parse(iso));
@@ -49,17 +39,36 @@ function relative(iso: string, nowIso: string | null, c: Copy): string {
   return rtf.format(-Math.round(h / 24), 'day');
 }
 
-/** The time of the last activity, the same muted line for everyone: it is a time, never an online state. */
-function LastActive({ p, now, c }: { p: ChartPerson; now: string | null; c: Copy }) {
-  if (!p.lastActiveAt) return null;
+const DAY_MS = 24 * 60 * 60_000;
+/** The calendar day of an instant in the page's own time zone, for "today". */
+const dayIn = (ms: number, c: Copy) => new Date(ms).toLocaleDateString('en-CA', { timeZone: c.timeZone });
+
+/**
+ * The last activity, the same muted line for everyone (a time, never an online state). Minutes only within the
+ * last hour; after that a band: "Active today" (the same calendar day in the page's zone), "This week", then
+ * "Standby" (older, or no time at all). `quiet` is false when the service sends no times: then nothing shows.
+ */
+function LastActive({ p, now, c, quiet }: { p: ChartPerson; now: string | null; c: Copy; quiet: boolean }) {
+  if (!quiet) return null;
+  const at = now ? Date.parse(now) : Date.now();
+  let text: string;
+  if (!p.lastActiveAt) text = c.story.standby;
+  else {
+    const t = Date.parse(p.lastActiveAt);
+    const ago = at - t;
+    if (ago < 60 * 60_000) text = c.lastActive(relative(p.lastActiveAt, now, c));
+    else if (dayIn(t, c) === dayIn(at, c)) text = c.story.activeToday;
+    else if (ago < 7 * DAY_MS) text = c.story.thisWeek;
+    else text = c.story.standby;
+  }
   return (
     <span className="basis-full text-xs text-muted-foreground" data-testid="last-active">
-      {c.lastActive(relative(p.lastActiveAt, now, c))}
+      {text}
     </span>
   );
 }
 
-function PersonRow({ p, c, now, strong }: { p: ChartPerson; c: Copy; now: string | null; strong?: boolean }) {
+function PersonRow({ p, c, now, strong, quiet }: { p: ChartPerson; c: Copy; now: string | null; strong?: boolean; quiet: boolean }) {
   const n = names(c);
   return (
     <li className="flex min-w-0 items-start gap-2.5 py-1.5" style={p.depth > 1 ? { paddingInlineStart: `${(p.depth - 1) * 0.75}rem` } : undefined}>
@@ -75,24 +84,26 @@ function PersonRow({ p, c, now, strong }: { p: ChartPerson; c: Copy; now: string
             <bdi>{p.reportsTo}</bdi>
           </span>
         ) : null}
-        <LastActive p={p} now={now} c={c} />
+        <LastActive p={p} now={now} c={c} quiet={quiet} />
       </span>
     </li>
   );
 }
 
-function ActivityFooter({ values, c }: { values: number[] | null; c: Copy }) {
+function ActivityFooter({ values, c }: { values: TeamDay[] | null; c: Copy }) {
   if (!values) return null;
   const num = (v: number) => v.toLocaleString(c.locale);
-  // A 0 from the service means "fewer than 3" (suppressed), so a total over such days is a lower bound.
-  const total = num(values.reduce((a, b) => a + b, 0));
-  const shown = values.some((v) => v === 0) ? c.atLeast(total) : total;
+  // A suppressed member-day (null from the service) makes that day, and so the week, a lower bound. A day where
+  // every member was suppressed reads "fewer than 3". A true zero is shown as 0.
+  const total = num(values.reduce((acc, d) => acc + (d.total ?? 0), 0));
+  const shown = values.some((d) => d.partial) ? c.atLeast(total) : total;
+  const dayLabel = (d: TeamDay) => (d.total === null ? c.underThree : d.partial ? c.atLeast(num(d.total)) : num(d.total));
   return (
     <div className="mt-auto flex items-center justify-between gap-3 border-t border-border px-4 py-3 lg:px-5" data-testid="team-activity">
       <span className="text-xs text-muted-foreground">
         {c.statMessages}: <span className="font-semibold text-foreground tabular-nums">{shown}</span>
       </span>
-      <Sparkline values={values} label={c.sparkLabel(values.map((v) => (v === 0 ? c.underThree : num(v))).join('، '))} />
+      <Sparkline values={values.map((d) => d.total)} label={c.sparkLabel(values.map(dayLabel).join('، '))} />
     </div>
   );
 }
@@ -111,24 +122,28 @@ function SectionHead({ id, title, body, count, c }: { id: string; title: string;
 
 const GRID = 'grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,19rem),1fr))]';
 
-function BoxCard({ box, c, now }: { box: ChartBox; c: Copy; now: string | null }) {
+function BoxCard({ box, c, now, quiet }: { box: ChartBox; c: Copy; now: string | null; quiet: boolean }) {
   const n = names(c);
-  const num = (v: number) => v.toLocaleString(c.locale);
   const title =
     box.kind === 'lead'
       ? box.project
-        ? [box.project[c.lang], num(box.size)]
-        : [box.lead.firstName, n.role(box.lead.role), num(box.size)]
-      : [n.department(box.department), num(box.size)];
+        ? [box.project[c.lang]]
+        : [box.lead.firstName, n.role(box.lead.role)]
+      : [n.department(box.department)];
   return (
     <Card data-box-kind={box.kind} className="flex flex-col">
       <CardHeader
-        title={title.map((part, i) => (
-          <span key={i}>
-            {i ? ' · ' : ''}
-            <bdi>{part}</bdi>
-          </span>
-        ))}
+        title={
+          <>
+            {title.map((part, i) => (
+              <span key={i}>
+                {i ? ' · ' : ''}
+                <bdi>{part}</bdi>
+              </span>
+            ))}
+            <span>{countSuffix(box.size, c)}</span>
+          </>
+        }
         titleProps={{ 'data-box-title': box.kind }}
         aside={<AvatarGroup names={box.people.map((p) => p.firstName)} moreLabel={c.more} />}
       />
@@ -140,7 +155,7 @@ function BoxCard({ box, c, now }: { box: ChartBox; c: Copy; now: string | null }
       <CardBody className="py-1.5">
         <ul className="m-0 list-none divide-y divide-border p-0">
           {box.people.map((p, i) => (
-            <PersonRow key={i} p={p} c={c} now={now} strong={p.depth === 0 && box.people.length > 1} />
+            <PersonRow key={i} p={p} c={c} now={now} quiet={quiet} strong={p.depth === 0 && box.people.length > 1} />
           ))}
         </ul>
       </CardBody>
@@ -149,7 +164,7 @@ function BoxCard({ box, c, now }: { box: ChartBox; c: Copy; now: string | null }
   );
 }
 
-function Leadership({ model, c, now }: { model: ChartModel; c: Copy; now: string | null }) {
+function Leadership({ model, c, now, quiet }: { model: ChartModel; c: Copy; now: string | null; quiet: boolean }) {
   const n = names(c);
   const ceo = model.strip.filter((p) => norm(p.role) === 'ceo');
   const clevel = model.strip.filter((p) => ['coo', 'cto', 'cno'].includes(norm(p.role)));
@@ -160,7 +175,7 @@ function Leadership({ model, c, now }: { model: ChartModel; c: Copy; now: string
         <h3 className="m-0 mb-1 text-sm font-extrabold text-muted-foreground">{label}</h3>
         <ul className="m-0 grid list-none gap-x-6 p-0 [grid-template-columns:repeat(auto-fill,minmax(min(100%,15rem),1fr))]">
           {people.map((p, i) => (
-            <PersonRow key={i} p={p} c={c} now={now} strong />
+            <PersonRow key={i} p={p} c={c} now={now} quiet={quiet} strong />
           ))}
         </ul>
       </div>
@@ -171,8 +186,8 @@ function Leadership({ model, c, now }: { model: ChartModel; c: Copy; now: string
       <Card data-testid="team-strip">
         <CardBody className="grid gap-4 py-4">
           {group(ceo.length ? n.role(ceo[0].role) : c.leadership, ceo, 'lead-ceo')}
-          {group(c.cLevel, clevel, 'lead-clevel')}
-          {group(c.executiveOffice, office, 'lead-office')}
+          {group(c.story.headsOfDepartment, clevel, 'lead-clevel')}
+          {group(c.story.executiveAssistants, office, 'lead-office')}
         </CardBody>
       </Card>
     </section>
@@ -219,6 +234,9 @@ export function TeamChart({ model, c }: { model: ChartModel; c: Copy }) {
   const network = model.boxes.filter(isNetwork);
   const other = model.boxes.filter((b) => !eng.includes(b) && !network.includes(b));
   const teams = model.boxes.filter((b) => b.kind === 'lead').length;
+  const n = names(c);
+  // Quiet bands only when the service sends last-activity times at all (an older service sends none).
+  const quiet = model.activeNow !== null;
   return (
     <div className="grid gap-8" data-chart-state="ok">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
@@ -228,14 +246,14 @@ export function TeamChart({ model, c }: { model: ChartModel; c: Copy }) {
         {model.activeNow !== null ? <Stat label={c.statActive} value={num(model.activeNow)} /> : null}
       </div>
 
-      {model.strip.length ? <Leadership model={model} c={c} now={now} /> : null}
+      {model.strip.length ? <Leadership model={model} c={c} now={now} quiet={quiet} /> : null}
 
       {eng.length ? (
         <section aria-labelledby="engineering">
-          <SectionHead id="engineering" title={c.nav.engineering} body={c.engineeringBody} count={eng.reduce((a, b) => a + b.size, 0)} c={c} />
+          <SectionHead id="engineering" title={n.department('Engineering')} body={c.engineeringBody} count={eng.reduce((a, b) => a + b.size, 0)} c={c} />
           <div className={GRID}>
             {eng.map((b, i) => (
-              <BoxCard key={i} box={b} c={c} now={now} />
+              <BoxCard key={i} box={b} c={c} now={now} quiet={quiet} />
             ))}
           </div>
         </section>
@@ -243,10 +261,10 @@ export function TeamChart({ model, c }: { model: ChartModel; c: Copy }) {
 
       {network.length ? (
         <section aria-labelledby="network">
-          <SectionHead id="network" title={c.nav.network} count={network.reduce((a, b) => a + b.size, 0)} c={c} />
+          <SectionHead id="network" title={n.department('Network')} count={network.reduce((a, b) => a + b.size, 0)} c={c} />
           <div className={GRID}>
             {network.map((b, i) => (
-              <BoxCard key={i} box={b} c={c} now={now} />
+              <BoxCard key={i} box={b} c={c} now={now} quiet={quiet} />
             ))}
           </div>
         </section>
@@ -257,7 +275,7 @@ export function TeamChart({ model, c }: { model: ChartModel; c: Copy }) {
           <SectionHead id="departments" title={c.nav.departments} body={c.departmentsBody} c={c} />
           <div className={GRID}>
             {other.map((b, i) => (
-              <BoxCard key={i} box={b} c={c} now={now} />
+              <BoxCard key={i} box={b} c={c} now={now} quiet={quiet} />
             ))}
           </div>
         </section>

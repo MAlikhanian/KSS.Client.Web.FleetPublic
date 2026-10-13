@@ -13,7 +13,8 @@
  *  - project: the team's PUBLIC title in both languages, { en, fa } (a generic
  *    product description, never a customer or code name), or null;
  *  - lastActiveAt: when the agent was last active (UTC, minute precision), or null;
- *  - activity7d: messages per day over the last 7 days, oldest first, or null. The ordinal is never rendered; it exists
+ *  - activity7d: messages per day over the last 7 days, oldest first, or null. A SUPPRESSED day (fewer than 3)
+ *    arrives as null; a true zero is 0. (An older service sent suppressed days as 0: both parse.) The ordinal is never rendered; it exists
  * only to build the reporting lines.
  *
  * Anything that does not match is REJECTED as a whole, never partly rendered:
@@ -29,8 +30,11 @@ export interface PublicAgent {
   reportsTo: number | null;
   project: PublicTitle | null;
   lastActiveAt: string | null;
-  activity7d: number[] | null;
+  activity7d: Day[] | null;
 }
+
+/** One day's count; null = suppressed by the service (fewer than 3). */
+export type Day = number | null;
 
 /** A public title, served in both languages. */
 export interface PublicTitle {
@@ -108,11 +112,11 @@ export function parseSnapshot(body: unknown): ParseResult {
       if (Number.isNaN(t)) return { ok: false, reason: 'AGENT_LAST_ACTIVE_INVALID' };
       lastActiveAt = new Date(t).toISOString();
     }
-    let activity7d: number[] | null = null;
+    let activity7d: Day[] | null = null;
     if (a.activity7d !== undefined && a.activity7d !== null) {
       const v = a.activity7d;
-      if (!Array.isArray(v) || v.length !== 7 || v.some((x) => count(x) === null)) return { ok: false, reason: 'AGENT_ACTIVITY_INVALID' };
-      activity7d = v as number[];
+      if (!Array.isArray(v) || v.length !== 7 || v.some((x) => x !== null && count(x) === null)) return { ok: false, reason: 'AGENT_ACTIVITY_INVALID' };
+      activity7d = v as Day[];
     }
     agents.push({ n, firstName, role, department, reportsTo, project, lastActiveAt, activity7d });
   }
@@ -202,20 +206,34 @@ export interface ChartPerson {
   /** The first name of the person this one reports to, or null. */
   reportsTo: string | null;
   lastActiveAt: string | null;
-  activity7d: number[] | null;
+  activity7d: Day[] | null;
   /** Nesting under the box's first person: 0 for the lead, 1 for her reports, ... */
   depth: number;
 }
 
 export type ChartBox =
-  | { kind: 'lead'; lead: ChartPerson; project: PublicTitle | null; people: ChartPerson[]; size: number; activity7d: number[] | null }
-  | { kind: 'department'; department: string; people: ChartPerson[]; size: number; activity7d: number[] | null };
+  | { kind: 'lead'; lead: ChartPerson; project: PublicTitle | null; people: ChartPerson[]; size: number; activity7d: TeamDay[] | null }
+  | { kind: 'department'; department: string; people: ChartPerson[]; size: number; activity7d: TeamDay[] | null };
+
+/**
+ * A team's day: the sum of its members' known counts, and whether any member's count was suppressed that day (so
+ * the sum is a lower bound). `total: null` when every reporting member was suppressed: the day reads "fewer than 3".
+ */
+export interface TeamDay {
+  total: number | null;
+  partial: boolean;
+}
 
 /** Day-by-day totals over the people who report one; null when nobody does. */
-export function sumActivity(people: { activity7d: number[] | null }[]): number[] | null {
-  const known = people.map((p) => p.activity7d).filter((v): v is number[] => v !== null);
+export function sumActivity(people: { activity7d: Day[] | null }[]): TeamDay[] | null {
+  const known = people.map((p) => p.activity7d).filter((v): v is Day[] => v !== null);
   if (!known.length) return null;
-  return Array.from({ length: 7 }, (_, i) => known.reduce((acc, v) => acc + v[i], 0));
+  return Array.from({ length: 7 }, (_, i) => {
+    const values = known.map((v) => v[i]);
+    const shown = values.filter((x): x is number => x !== null);
+    const partial = shown.length < values.length;
+    return { total: shown.length ? shown.reduce((a, b) => a + b, 0) : null, partial };
+  });
 }
 
 export interface ChartDepartmentActivity {

@@ -69,7 +69,64 @@ export interface Copy {
   artLabel: string;
   footerCopyright: string;
   footerCookies: string;
+  /** The story at the top of the page: what this is, what the agents do, how a request is handled. */
+  story: Story;
 }
+
+export interface StoryCard {
+  key: 'support' | 'engineering' | 'network' | 'leadership';
+  title: string;
+  /** One plain sentence. Two are approved practice claims: see STORY_CLAIMS. */
+  body: string;
+}
+
+export interface Story {
+  /** The headline with the live agent count; `null` when there is no snapshot (the number is then left out). */
+  headline: (count: string | null) => string;
+  /** The sub-line: the answers, then the approved changes clause (STORY_CLAIMS), then deletion. */
+  subAnswers: string;
+  subDeletion: string;
+  ctaSite: string;
+  ctaContact: string;
+  live: (time: string) => string;
+  nav: { what: string; how: string; team: string; label: string };
+  whatTitle: string;
+  cards: StoryCard[];
+  /** Live numbers on the cards. */
+  numSupport: string;
+  numTeams: (teams: string, products: string | null) => string;
+  numSpecialties: string;
+  numActiveHour: string;
+  howTitle: string;
+  /** The five steps: [title, line]. Step 4 is truth-checked: it claims only a recorded approval and the deletion rule. */
+  steps: [string, string][];
+  teamTitle: string;
+  /** Quiet bands for the last activity: today, this week, standby (more than a week, or none). */
+  activeToday: string;
+  thisWeek: string;
+  standby: string;
+  headsOfDepartment: string;
+  executiveAssistants: string;
+}
+
+/**
+ * Claims about how the work is done, kept as single strings because each was checked for truth and approved as
+ * worded. Change one only with the same check: it is a public statement about our practice.
+ *  - changes: the hero's middle clause.
+ *  - network, support: the two card sentences.
+ */
+export const STORY_CLAIMS: Record<Lang, { changes: string; network: string; support: string }> = {
+  en: {
+    changes: 'Changes to your systems follow a written plan or an approved standing procedure',
+    network: 'A specialist for each technology. Every change follows a written plan or an approved standing procedure, with a configuration backup taken first.',
+    support: 'Customers are served in their own support rooms. Agents answer in the customer’s language.',
+  },
+  fa: {
+    changes: 'تغییرات در سیستم‌های شما طبق برنامهٔ مکتوب یا یک روال دائمیِ تأییدشده انجام می‌شود',
+    network: 'برای هر فناوری یک متخصص. هر تغییر طبق برنامهٔ مکتوب یا یک روال دائمیِ تأییدشده، و پس از تهیهٔ نسخهٔ پشتیبان از پیکربندی، انجام می‌شود.',
+    support: 'مشتریان در اتاق‌های پشتیبانی خودشان پشتیبانی می‌شوند. عامل‌ها به زبان مشتری پاسخ می‌دهند.',
+  },
+};
 
 export const COPY: Record<Lang, Copy> = {
   fa: {
@@ -122,6 +179,43 @@ export const COPY: Record<Lang, Copy> = {
     artLabel: 'تصویری از یک نمودار سازمانی',
     footerCopyright: `© ۲۰۲۶ ${LEGAL_NAME_FA}`,
     footerCookies: 'این سایت هیچ کوکی‌ای ذخیره نمی‌کند.',
+    story: {
+      headline: (n) =>
+        n
+          ? `${LEGAL_NAME_FA} پشتیبانی مشتریان، مهندسی نرم‌افزار و عملیات شبکهٔ خود را با تیمی از ${n} عامل هوش مصنوعی، به‌صورت زنده، اداره می‌کند.`
+          : `${LEGAL_NAME_FA} پشتیبانی مشتریان، مهندسی نرم‌افزار و عملیات شبکهٔ خود را با تیمی از عامل‌های هوش مصنوعی، به‌صورت زنده، اداره می‌کند.`,
+      subAnswers: 'پاسخ سریع و صادقانه به فارسی یا انگلیسی، با متن یا صدا.',
+      subDeletion: 'و حذف داده همیشه به تأیید یک شخص نیاز دارد.',
+      ctaSite: 'مشاهدهٔ kss.ir',
+      ctaContact: 'تماس با ما',
+      live: (time) => `داده‌های زندهٔ تیم، به‌روزرسانی: ${time} به وقت تهران`,
+      nav: { what: 'چه می‌کنند', how: 'روند کار', team: 'تیم زنده', label: 'بخش‌ها' },
+      whatTitle: 'عامل‌ها چه می‌کنند',
+      cards: [
+        { key: 'support', title: 'پشتیبانی مشتریان', body: STORY_CLAIMS.fa.support },
+        { key: 'engineering', title: 'مهندسی نرم‌افزار', body: `تیم‌هایی که محصولات ${LEGAL_NAME_FA} را در سه مرحلهٔ تأییدشده می‌سازند و نگه می‌دارند: رابط کاربری، پایگاه داده، سمت سرور.` },
+        { key: 'network', title: 'شبکه و زیرساخت', body: STORY_CLAIMS.fa.network },
+        { key: 'leadership', title: 'مدیریت', body: 'مدیرعامل و مدیران بخش‌ها کار را برنامه‌ریزی و میان تیم‌ها تقسیم می‌کنند.' },
+      ],
+      numSupport: 'پیام در هفت روز گذشته',
+      numTeams: (teams, products) => (products ? `تیم، ${products} محصول فعال` : 'تیم'),
+      numSpecialties: 'تخصص',
+      numActiveHour: 'عامل با فعالیت در یک ساعت گذشته',
+      howTitle: 'یک درخواست چطور انجام می‌شود',
+      steps: [
+        ['شما می‌پرسید', 'در اتاق پشتیبانی خود، با متن یا صدا'],
+        ['عامل پشتیبانی پاسخ می‌دهد', 'به زبان شما، و درخواست را ثبت می‌کند'],
+        ['متخصص اقدام می‌کند', 'مهندسی یا شبکه، اگر تغییری لازم باشد'],
+        ['تأیید', 'تغییرات پایگاه داده با تأیید ثبت‌شده انجام می‌شود؛ حذف داده همیشه به تأیید کتبی یک شخص نیاز دارد'],
+        ['انجام شد', 'و به شما اطلاع داده می‌شود؛ اگر چیزی در انتظار باشد، با تاریخ'],
+      ],
+      teamTitle: 'تیم زنده',
+      activeToday: 'فعالیت امروز',
+      thisWeek: 'این هفته',
+      standby: 'آماده به کار',
+      headsOfDepartment: 'مدیران بخش‌ها',
+      executiveAssistants: 'دستیاران اجرایی',
+    },
   },
   en: {
     lang: 'en',
@@ -173,5 +267,42 @@ export const COPY: Record<Lang, Copy> = {
     artLabel: 'An illustration of an organisation chart',
     footerCopyright: '© 2026 KSS',
     footerCookies: 'This site sets no cookies.',
+    story: {
+      headline: (n) =>
+        n
+          ? `KSS runs its customer support, software engineering and network operations with a team of ${n} AI agents, working live.`
+          : 'KSS runs its customer support, software engineering and network operations with a team of AI agents, working live.',
+      subAnswers: 'Fast, honest answers in Persian or English, by text or voice.',
+      subDeletion: 'and deleting data always needs a person’s approval.',
+      ctaSite: 'Visit kss.ir',
+      ctaContact: 'Contact us',
+      live: (time) => `Live data from the team, updated ${time} UTC`,
+      nav: { what: 'What they do', how: 'How it works', team: 'The live team', label: 'Sections' },
+      whatTitle: 'What the agents do',
+      cards: [
+        { key: 'support', title: 'Customer support', body: STORY_CLAIMS.en.support },
+        { key: 'engineering', title: 'Software engineering', body: 'Teams that build and maintain KSS’s products, in three approved stages: interface, database, back end.' },
+        { key: 'network', title: 'Network & infrastructure', body: STORY_CLAIMS.en.network },
+        { key: 'leadership', title: 'Leadership', body: 'A chief executive and heads of department plan the work and hand it out to each team.' },
+      ],
+      numSupport: 'messages in the last seven days',
+      numTeams: (teams, products) => (products ? `teams · ${products} products in service` : 'teams'),
+      numSpecialties: 'specialties',
+      numActiveHour: 'agents with activity in the last hour',
+      howTitle: 'How a request is handled',
+      steps: [
+        ['You ask', 'in your support room, by text or voice'],
+        ['A support agent answers', 'in your language, and logs the request'],
+        ['A specialist acts', 'engineering or network, when a change is needed'],
+        ['Approval', 'database changes go through a recorded approval; deleting data always needs a person’s written approval'],
+        ['Done', 'and you are told, with the date if anything waits'],
+      ],
+      teamTitle: 'The live team',
+      activeToday: 'Active today',
+      thisWeek: 'This week',
+      standby: 'Standby',
+      headsOfDepartment: 'Heads of department',
+      executiveAssistants: 'Executive assistants',
+    },
   },
 };

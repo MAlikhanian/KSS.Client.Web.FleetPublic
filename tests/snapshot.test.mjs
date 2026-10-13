@@ -15,22 +15,30 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
+import { register } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { ORDINAL_BASE, PROJECT_CANARY, TEAM_TITLES, makeSnapshot, startMock } from './support/mock-snapshot.mjs';
 
+// public-titles imports its siblings without an extension; resolve those to .ts for Node.
+register('./support/resolve-ts.mjs', import.meta.url);
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { parseSnapshot, buildChart } = await import('../components/snapshot.ts');
-const { ROLE_NAMES_FA, DEPARTMENT_NAMES_FA } = await import('../components/names.ts');
+const { roleTitle, departmentTitle } = await import('../components/public-titles.ts');
+const { STORY_CLAIMS } = await import('../components/copy.ts');
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 // Any of the mock's ordinals as a standalone number (870001..870103).
 const ORDINAL = /(?<![0-9])870(?:0(?:0[1-9]|[1-9][0-9])|10[0-3])(?![0-9])/;
 const SAMPLE = makeSnapshot('ok');
 const FIRST_NAMES = new Set(SAMPLE.agents.map((a) => a.firstName));
-const ROLE_LABELS = new Set([...SAMPLE.roles, ...Object.values(ROLE_NAMES_FA)]);
+// The plain public titles a page may show, in both languages.
+const ROLE_LABELS = new Set(SAMPLE.roles.flatMap((r) => [roleTitle(r, 'en'), roleTitle(r, 'fa')]));
 const stripTags = (html) => html.replace(/<[^>]+>/g, '').replace(/&#x27;|&#39;/g, "'").trim();
 /** Every lead-box title on a page, split into its parts. */
-const leadTitles = (html) => [...html.matchAll(/<h3[^>]*data-box-title="lead"[^>]*>([\s\S]*?)<\/h3>/g)].map((m) => stripTags(m[1]).split(' · '));
+// A Persian title puts its count in parentheses ("… (۴)"); read it the same way as "… · 4".
+const leadTitles = (html) =>
+  [...html.matchAll(/<h3[^>]*data-box-title="lead"[^>]*>([\s\S]*?)<\/h3>/g)].map((m) => stripTags(m[1]).replace(/ \(([0-9۰-۹]+)\)$/, ' · $1').split(' · '));
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -150,6 +158,23 @@ describe('snapshot parser', () => {
     assert.ok(titled.length > 0 && titled.every((a) => a.project.en && a.project.fa), 'a title carries both languages');
     assert.ok(!JSON.stringify(full).includes(PROJECT_CANARY), 'an internal project name is never kept');
   });
+  test('activity7d: a suppressed day is null, a true zero is 0; both parse, and a team day sums what is known', async () => {
+    const { sumActivity } = await import('../components/snapshot.ts');
+    const body = makeSnapshot('ok');
+    body.agents[0].activity7d = [null, 0, 5, null, 3, 0, 9];
+    body.agents[1].activity7d = [4, 0, null, null, 3, 1, 0];
+    const r = parseSnapshot(body);
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.snapshot.agents[0].activity7d, [null, 0, 5, null, 3, 0, 9]);
+    const days = sumActivity([r.snapshot.agents[0], r.snapshot.agents[1]]);
+    assert.deepEqual(days[0], { total: 4, partial: true }, 'one member suppressed: a lower bound');
+    assert.deepEqual(days[1], { total: 0, partial: false }, 'a true zero stays zero');
+    assert.deepEqual(days[3], { total: null, partial: true }, 'everyone suppressed: fewer than 3');
+    // An older service sent suppressed days as 0: still valid.
+    const old = makeSnapshot('ok');
+    old.agents[0].activity7d = [0, 0, 5, 0, 3, 0, 9];
+    assert.equal(parseSnapshot(old).ok, true);
+  });
   test('generatedAt: optional; missing means null, a valid time is kept as ISO UTC', () => {
     const body = makeSnapshot('ok');
     delete body.generatedAt;
@@ -248,7 +273,7 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       assert.equal(status, 200);
       assert.equal(chartState(html), 'ok');
       for (const a of [SAMPLE.agents[0], SAMPLE.agents[20], SAMPLE.agents[102]]) assert.ok(html.includes(a.firstName), `${route} shows ${a.firstName}`);
-      assert.ok(html.includes(route === '/' ? 'پشتیبانی مشتریان' : 'Customer Support'), `${route} names departments in its language`);
+      assert.ok(html.includes(route === '/' ? 'پشتیبانی مشتریان' : 'Customer support'), `${route} names departments in its language`);
       assert.ok(html.includes('class="activity-card'), `${route} shows the activity cards`);
     }
   });
@@ -263,12 +288,12 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       assert.ok(rows.every((r) => r.includes(' · ')), route + ': each role line carries the department');
       assert.equal((html.match(/class="line-reports[ "]/g) ?? []).length, 102, route + ': everyone but the CEO has a reports-to line');
       assert.ok(html.includes(fa ? 'گزارش به ' : 'Reports to '), route + ': reports-to wording');
-      assert.match(html, /data-testid="chart-updated"><time dateTime="\d{4}-\d{2}-\d{2}T/, route + ': the update time is shown');
+      assert.match(html, /data-testid="chart-updated">(?:<span[^>]*><\/span>)?<time dateTime="\d{4}-\d{2}-\d{2}T/, route + ': the update time is shown');
       assert.ok(html.includes(fa ? 'به وقت تهران' : 'UTC'), route + ': the update time names its zone');
       assert.doesNotMatch(html, /style="--/, route + ': no inline colour variable');
       assert.ok(!html.includes('role-'), route + ': no role colour class or variable');
       if (fa) {
-        for (const [en, faName] of [['CNO', ROLE_NAMES_FA.CNO], ['Network Expert', ROLE_NAMES_FA['Network Expert']], ['Network', DEPARTMENT_NAMES_FA.Network]]) {
+        for (const [en, faName] of [['CNO', roleTitle('CNO', 'fa')], ['Network Expert', roleTitle('Network Expert', 'fa')], ['Network', departmentTitle('Network', 'fa')]]) {
           assert.ok(faName, 'a Persian name exists for ' + en);
           assert.ok(html.includes(faName), 'fa shows ' + faName);
         }
@@ -281,11 +306,11 @@ describe('served pages against the snapshot service, every state', { timeout: 60
     mock.state.mode = 'ok';
     for (const route of ['/', '/en']) {
       const { html } = await page(route);
-      const side = html.slice(html.indexOf('data-testid="sidebar"'), html.indexOf('</aside>'));
-      const links = [...side.matchAll(/href="#([a-z]+)"/g)].map((m) => m[1]);
-      assert.deepEqual(links, ['overview', 'leadership', 'engineering', 'network', 'departments', 'activity'], route + ': the menu lists the sections');
+      const menu = html.slice(html.indexOf('data-testid="section-menu"'), html.indexOf('</nav>'));
+      const links = [...menu.matchAll(/href="#([a-z]+)"/g)].map((m) => m[1]);
+      assert.deepEqual(links, ['what', 'how', 'team'], route + ': the top bar lists the three story sections');
       for (const id of links) assert.match(html, new RegExp('id="' + id + '"'), route + ': #' + id + ' exists');
-      assert.ok(html.includes('data-testid="section-menu"'), route + ': the phone section menu is there');
+      assert.ok(!html.includes('data-testid="sidebar"'), route + ': no sidebar any more');
       assert.ok(html.includes('data-testid="theme-toggle"'), route + ': the theme switch is there');
       assert.ok(html.includes("localStorage.getItem('fleet-theme')"), route + ': a stored theme is applied before paint');
       assert.equal((html.match(/data-testid="stat"/g) ?? []).length, 3, route + ': three stat tiles without the active-now figure');
@@ -309,7 +334,12 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       assert.equal((html.match(/data-testid="last-active"/g) ?? []).length, 103, route + ': every person shows the time of her last activity');
       const lines = [...html.matchAll(/data-testid="last-active">([^<]*)</g)].map((m) => m[1]);
       assert.equal(lines.length, 103, route + ': each last-activity entry is one plain line, no badge inside');
-      assert.ok(lines.every((t) => t.startsWith(lang === 'fa' ? 'آخرین فعالیت: ' : 'Last activity: ')), route + ': every line reads "last activity"');
+      // Minutes only within the hour; then a band. The mock spreads times over 2 min, 70 min, 25 h and 73 h.
+      const bands = lang === 'fa' ? ['آخرین فعالیت: ', 'فعالیت امروز', 'این هفته', 'آماده به کار'] : ['Last activity: ', 'Active today', 'This week', 'Standby'];
+      assert.ok(lines.every((t) => bands.some((b) => t.startsWith(b))), route + ': every line is "last activity" or a quiet band');
+      assert.ok(lines.some((t) => t.startsWith(bands[0])), route + ': minutes within the last hour');
+      assert.ok(lines.some((t) => t === bands[2]), route + ': "this week" for a quiet agent');
+      assert.ok(!lines.some((t) => /[0-9۰-۹]+ (hours?|days?|ساعت|روز)/.test(t)), route + ': no hours or days spelled out past the first hour');
       assert.ok(html.includes(lang === 'fa' ? 'آخرین فعالیت در ۱۵ دقیقهٔ گذشته' : 'Last activity in the past 15 minutes'), route + ': the tile title says last activity');
       assert.doesNotMatch(html, lang === 'fa' ? />فعال</ : />(Active|Online|online)</, route + ': no online or active pill');
       assert.ok((html.match(/data-testid="team-activity"/g) ?? []).length >= 17, route + ': team graphs');
@@ -319,6 +349,29 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       assert.ok(html.includes(lang === 'fa' ? 'دست‌کم ' : 'at least '), route + ': a total over suppressed days is a lower bound');
     }
     await switchTo('ok', (h) => chartState(h) === 'ok' && !h.includes('data-testid="team-lead"'));
+  });
+
+  test('the story: a headline with the LIVE count, the approved claims, four cards with live numbers, five steps', async () => {
+    mock.state.mode = 'ok';
+    for (const route of ['/', '/en']) {
+      const { html } = await page(route);
+      const lang = route === '/' ? 'fa' : 'en';
+      const h1 = stripTags((html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/) ?? [])[1] ?? '');
+      assert.ok(h1.includes(lang === 'fa' ? '۱۰۳' : '103'), route + ': the headline carries the live count');
+      assert.ok(html.includes(STORY_CLAIMS[lang].changes), route + ': the approved changes clause');
+      if (lang === 'en') assert.ok(html.includes('Fast, honest answers in Persian or English, by text or voice. Changes to your systems follow a written plan or an approved standing procedure, and deleting data always needs a person’s approval.'), '/en: the approved hero sentence, verbatim');
+      for (const k of ['support', 'engineering', 'network', 'leadership']) assert.ok(html.includes(`data-testid="what-${k}"`), route + ': card ' + k);
+      assert.ok(html.includes(STORY_CLAIMS[lang].network.replace(/&/g, '&amp;')), route + ': the approved network sentence');
+      assert.ok(html.includes(STORY_CLAIMS[lang].support), route + ': the approved support sentence');
+      if (lang === 'en') assert.ok(html.includes('Customers are served in their own support rooms. Agents answer in the customer’s language.'), '/en: the support card, verbatim');
+      assert.ok(!/track every request|پیگیری می‌کنند/.test(html), route + ': no tracking claim');
+      const numbers = (html.match(/data-testid="what-number"/g) ?? []).length;
+      // Today's shape: support messages and teams have data; one generic network role and no times have none.
+      assert.equal(numbers, 2, route + ': only the numbers this snapshot can back');
+      assert.equal((html.match(/<li[^>]*class="grid content-start/g) ?? []).length, 5, route + ': five steps');
+      assert.ok(!html.includes('data-testid="contact"'), route + ': no contact line without the deployment\'s values');
+      assert.match(html, /href="https:\/\/kss\.ir"[^>]*>[^<]*(Contact us|تماس با ما)/, route + ': "Contact us" falls back to kss.ir');
+    }
   });
 
   test('box titles: a lead box is first name · role · count and NOTHING else; no project ever reaches a page', async () => {
@@ -345,9 +398,9 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       assert.equal(status, 200);
       assert.equal(chartState(html), 'ok');
       assert.equal(leadTitles(html).length, 0);
-      const eng = route === '/' ? 'مهندسی' : 'Engineering';
+      const eng = departmentTitle('Engineering', route === '/' ? 'fa' : 'en');
       assert.ok(
-        [...html.matchAll(/<h3[^>]*data-box-title="department"[^>]*>([\s\S]*?)<\/h3>/g)].some((m) => stripTags(m[1]).startsWith(eng + ' · ')),
+        [...html.matchAll(/<h3[^>]*data-box-title="department"[^>]*>([\s\S]*?)<\/h3>/g)].some((m) => stripTags(m[1]).startsWith(eng + (route === '/' ? ' (' : ' · '))),
         `${route}: one "${eng}" box`,
       );
     }
@@ -439,7 +492,7 @@ describe('the one-day stale copy under ISR, and the update time', { timeout: 300
     await app?.stop();
     mock?.server.close();
   });
-  const shownTime = (html) => (html.match(/data-testid="chart-updated"><time dateTime="([^"]+)"/) ?? [])[1];
+  const shownTime = (html) => (html.match(/data-testid="chart-updated">(?:<span[^>]*><\/span>)?<time dateTime="([^"]+)"/) ?? [])[1];
 
   test('the "updated" line carries the SNAPSHOT\'s time, not the render time', async () => {
     assert.equal(shownTime(await (await fetch(app.base + '/en')).text()), G);
@@ -455,6 +508,52 @@ describe('the one-day stale copy under ISR, and the update time', { timeout: 300
     assert.equal(shownTime(html), G, 'still the snapshot\'s own time');
     assert.ok(await logged(app.logs, 'SNAPSHOT_HTTP_ERROR (status 500)'), 'the failed fetch was logged');
     assert.ok(!app.logs.join('').includes('SNAPSHOT_UNAVAILABLE'), 'nothing refused: the copy was good');
+  });
+});
+
+// Invented values only: the real ones live in the deployment's ConfigMap, never in the source.
+const FAKE_CONTACT = { FLEET_PUBLIC_CONTACT_EMAIL: 'desk@example.test', FLEET_PUBLIC_CONTACT_PHONE: '000 000 0000', FLEET_PUBLIC_CONTACT_TEL: '+10000000000' };
+
+describe('contact details, read from the deployment at render time', () => {
+  let read;
+  const withEnv = (env, fn) => {
+    const keys = Object.keys(FAKE_CONTACT);
+    const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    for (const k of keys) delete process.env[k];
+    Object.assign(process.env, env);
+    try {
+      return fn();
+    } finally {
+      for (const k of keys) if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  };
+  before(async () => {
+    read = (await import('../components/contact.ts')).readContact;
+  });
+
+  test('unset: nothing; set: all three; a malformed value or a phone without its tel: form is dropped', () => {
+    assert.deepEqual(withEnv({}, read), { email: null, phone: null, tel: null });
+    assert.deepEqual(withEnv(FAKE_CONTACT, read), { email: 'desk@example.test', phone: '000 000 0000', tel: '+10000000000' });
+    assert.equal(withEnv({ FLEET_PUBLIC_CONTACT_EMAIL: '"><script>@x.io' }, read).email, null);
+    assert.deepEqual(withEnv({ FLEET_PUBLIC_CONTACT_PHONE: '000 000 0000' }, read), { email: null, phone: null, tel: null });
+  });
+
+  test('the served page carries them as mailto: and tel: links when the deployment sets them', async () => {
+    const m = await startMock();
+    const app = await startApp({ FLEET_PUBLIC_API_URL: `http://127.0.0.1:${m.port}`, ...FAKE_CONTACT });
+    try {
+      for (const route of ['/', '/en']) {
+        const html = await settle(app.base, route, (h) => chartState(h) === 'ok');
+        const line = (html.match(/data-testid="contact">([\s\S]*?)<\/p>/) ?? [])[1] ?? '';
+        assert.ok(line.includes('href="mailto:desk@example.test"'), route + ': the email link');
+        assert.ok(line.includes('href="tel:+10000000000"') && line.includes('000 000 0000'), route + ': the phone, with its tel: link');
+        assert.match(html, /href="mailto:desk@example\.test"[^>]*>[^<]*(Contact us|تماس با ما)/, route + ': "Contact us" writes to the address');
+      }
+    } finally {
+      await app.stop();
+      m.server.close();
+    }
   });
 });
 

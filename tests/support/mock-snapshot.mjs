@@ -97,8 +97,8 @@ export function makeSnapshot(mode = 'ok') {
       ? {
           // Spread over now (active), an hour ago, a day ago, three days ago; minute precision.
           lastActiveAt: new Date(Math.floor((Date.now() - [2, 70, 1500, 4400][i % 4] * 60_000) / 60_000) * 60_000).toISOString(),
-          // As served: a day under 3 messages is suppressed to 0.
-          activity7d: Array.from({ length: 7 }, (_, d) => ((i * 3 + d * 5) % 9 < 3 ? 0 : (i * 3 + d * 5) % 9)),
+          // As served: a SUPPRESSED day (fewer than 3) is null; a true zero would be 0.
+          activity7d: Array.from({ length: 7 }, (_, d) => ((i * 3 + d * 5) % 9 < 3 ? null : (i * 3 + d * 5) % 9)),
         }
       : {}),
   }));
