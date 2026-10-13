@@ -53,11 +53,11 @@ export function Hero({ c, n }: { c: Copy; n: StoryNumbers }) {
   const s = c.story;
   const count = n.total === null ? null : n.total.toLocaleString(c.locale);
   return (
-    <section aria-labelledby="overview" className="grid content-center gap-3 rounded-card border border-border bg-gradient-to-br from-card to-muted p-5 lg:p-7" data-testid="hero">
-      <h1 id="overview" className="m-0 max-w-[32ch] text-xl leading-snug font-extrabold lg:text-[2rem]">
+    <section aria-labelledby="overview" className="grid items-center gap-x-10 gap-y-3 rounded-card border border-border bg-gradient-to-br from-card to-muted p-5 lg:px-7 lg:py-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]" data-testid="hero">
+      <h1 id="overview" className="m-0 max-w-[40ch] text-xl leading-snug font-extrabold lg:text-[1.75rem] xl:row-span-2">
         {s.headline(count)}
       </h1>
-      <p className="intro m-0 max-w-[62ch] text-muted-foreground">
+      <p className="intro m-0 max-w-[70ch] text-muted-foreground">
         {/* One text node, so the approved sentence is verbatim in the HTML. */}
         {`${s.subAnswers} ${STORY_CLAIMS[c.lang].changes}${c.lang === 'fa' ? '، ' : ', '}${s.subDeletion}`}
       </p>
@@ -91,7 +91,7 @@ export function WhatTheyDo({ c, n }: { c: Copy; n: StoryNumbers }) {
       <h2 id="what" className="m-0 mb-3 text-xl font-extrabold">
         {c.story.whatTitle}
       </h2>
-      <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,15rem),1fr))]">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {c.story.cards.map((card) => {
           const num = cardNumber(card, n, c);
           return (

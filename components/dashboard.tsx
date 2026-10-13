@@ -78,9 +78,9 @@ function MixBar({ parts, label }: { parts: { key: string; color: string; count: 
   );
 }
 
-function StatCard({ label, value, hint, children, testid }: { label: string; value: string; hint?: string; children?: ReactNode; testid: string }) {
+function StatCard({ label, value, hint, children, testid, className }: { label: string; value: string; hint?: string; children?: ReactNode; testid: string; className?: string }) {
   return (
-    <Card className="flex min-w-0 flex-col gap-2 p-4 lg:p-5" data-testid="stat" data-stat={testid}>
+    <Card className={`flex min-w-0 flex-col gap-2 p-4 lg:p-5 ${className ?? ''}`} data-testid="stat" data-stat={testid}>
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className="flex items-end justify-between gap-3">
         <span className="text-2xl leading-tight font-extrabold tabular-nums lg:text-[2rem]">{value}</span>
@@ -99,19 +99,21 @@ export function StatCards({ model, c }: { model: ChartModel; c: Copy }) {
   const leads = model.boxes.filter((b) => b.kind === 'lead');
   const products = leads.filter((b) => b.kind === 'lead' && b.project !== null).length;
   const groups = mix(model, c);
+  const five = (i: number) => (model.activeNow === null ? '' : i < 2 ? 'sm:col-span-3 xl:col-span-1' : 'sm:col-span-2 xl:col-span-1');
   return (
-    <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,14rem),1fr))]" data-testid="stat-cards">
-      <StatCard label={c.statAgents} value={num(model.total)} testid="agents">
+    // Five cards: one row of five on a wide screen; 2 + 3 on a tablet. Four: one row, or 2 + 2.
+    <div className={model.activeNow !== null ? 'grid gap-4 sm:grid-cols-6 xl:grid-cols-5' : 'grid gap-4 sm:grid-cols-2 xl:grid-cols-4'} data-testid="stat-cards">
+      <StatCard label={c.statAgents} value={num(model.total)} testid="agents" className={five(0)}>
         <span className="w-24 shrink-0 pb-2">
           <MixBar parts={groups} label={groups.map((g) => `${g.label}: ${num(g.count)}`).join('، ')} />
         </span>
       </StatCard>
-      <StatCard label={c.statMessages} value={num(sentShown)} hint={c.dash.statMessagesHint} testid="messages">
+      <StatCard label={c.statMessages} value={num(sentShown)} hint={c.dash.statMessagesHint} testid="messages" className={five(1)}>
         <Sparkline values={daily} label={c.sparkLabel(daily.map(num).join('، '))} />
       </StatCard>
-      <StatCard label={c.statTeams} value={num(leads.length)} hint={c.dash.statTeamsHint(products ? num(products) : null)} testid="teams" />
-      <StatCard label={c.dash.statDepartments} value={num(model.headcount.length)} testid="departments" />
-      {model.activeNow !== null ? <StatCard label={c.statActive} value={num(model.activeNow)} testid="active" /> : null}
+      <StatCard label={c.statTeams} value={num(leads.length)} hint={c.dash.statTeamsHint(products ? num(products) : null)} testid="teams" className={five(2)} />
+      <StatCard label={c.dash.statDepartments} value={num(model.headcount.length)} testid="departments" className={five(3)} />
+      {model.activeNow !== null ? <StatCard label={c.statActive} value={num(model.activeNow)} testid="active" className={five(4)} /> : null}
     </div>
   );
 }
@@ -126,9 +128,9 @@ export function UsageBand({ model, c }: { model: ChartModel; c: Copy }) {
       <h2 id="usage" className="m-0 text-xl font-extrabold">
         {c.dash.usageTitle}
       </h2>
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-12">
         {series.length ? (
-          <Card className="xl:col-span-2" data-testid="messages-chart">
+          <Card className="xl:col-span-7" data-testid="messages-chart">
             <CardHeader title={c.dash.messagesTitle} />
             <CardBody className="grid gap-3 py-4">
               <p className="m-0 text-sm text-muted-foreground">{c.dash.messagesBody}</p>
@@ -136,9 +138,11 @@ export function UsageBand({ model, c }: { model: ChartModel; c: Copy }) {
             </CardBody>
           </Card>
         ) : null}
-        <div className={series.length ? 'grid content-start gap-4' : 'grid content-start gap-4 xl:col-span-3 xl:grid-cols-3'}>
-          {model.activeByHour ? (
-            <Card data-testid="hours-chart">
+        <div className="min-w-0 xl:col-span-5">
+          <DepartmentTable model={model} c={c} />
+        </div>
+        {model.activeByHour ? (
+            <Card className="xl:col-span-4" data-testid="hours-chart">
               <CardHeader title={c.dash.hoursTitle} />
               <CardBody className="grid gap-3 py-4">
                 <p className="m-0 text-xs text-muted-foreground">{c.dash.hoursBody}</p>
@@ -146,8 +150,10 @@ export function UsageBand({ model, c }: { model: ChartModel; c: Copy }) {
               </CardBody>
             </Card>
           ) : null}
+        <div className="xl:col-span-5">
           <UsagePanel usage={model.usage} now={model.generatedAt} c={c} />
-          <Card data-testid="team-mix">
+        </div>
+          <Card className="xl:col-span-3" data-testid="team-mix">
             <CardHeader title={c.dash.mixTitle} aside={<Badge>{num(total)}</Badge>} />
             <CardBody className="grid gap-3 py-4">
               <MixBar parts={groups} label={groups.map((g) => `${g.label}: ${num(g.count)}`).join('، ')} />
@@ -164,7 +170,6 @@ export function UsageBand({ model, c }: { model: ChartModel; c: Copy }) {
               </ul>
             </CardBody>
           </Card>
-        </div>
       </div>
     </section>
   );
@@ -179,18 +184,18 @@ export function DepartmentTable({ model, c }: { model: ChartModel; c: Copy }) {
     ...model.activity.map((d) => ({ key: d.department ?? '', name: d.department ? departmentTitle(d.department, c.lang) : c.other, agents: d.department ? (heads.get(d.department) ?? null) : null, d, color: COLOR[groupOf(d.department)] })),
     ...(model.other ? [{ key: 'other', name: c.other, agents: null, d: model.other, color: COLOR.other }] : []),
   ];
-  const th = 'px-3 py-2.5 text-start text-xs font-semibold text-muted-foreground whitespace-nowrap';
-  const td = 'px-3 py-2.5 tabular-nums whitespace-nowrap';
+  const th = 'px-3 py-2 text-start text-xs font-semibold text-muted-foreground whitespace-nowrap';
+  const td = 'px-3 py-1.5 tabular-nums whitespace-nowrap';
   return (
-    <section aria-labelledby="activity" className="grid min-w-0 grid-cols-1 gap-3">
-      <div>
-        <h2 id="activity" className="m-0 text-xl font-extrabold">
+    <section aria-labelledby="activity" className="min-w-0 rounded-card border border-border bg-card">
+      <header className="border-b border-border px-4 py-3 lg:px-5">
+        <h3 id="activity" className="m-0 text-base font-extrabold">
           {c.activityTitle}
-        </h2>
-        <p className="m-0 mt-1 text-sm text-muted-foreground">{c.activityBody}</p>
-      </div>
-      <Card className="overflow-x-auto" data-testid="department-table">
-        <table className="w-full min-w-[36rem] border-collapse text-sm">
+        </h3>
+        <p className="m-0 mt-1 text-xs text-muted-foreground">{c.activityBody}</p>
+      </header>
+      <div className="overflow-x-auto" data-testid="department-table">
+        <table className="w-full min-w-[32rem] border-collapse text-sm">
           <thead className="border-b border-border bg-muted">
             <tr>
               <th scope="col" className={th}>
@@ -213,7 +218,7 @@ export function DepartmentTable({ model, c }: { model: ChartModel; c: Copy }) {
           <tbody className="divide-y divide-border">
             {rows.map((r) => (
               <tr key={r.key} data-testid="department-row">
-                <th scope="row" className="px-3 py-2.5 text-start font-semibold">
+                <th scope="row" className="px-3 py-1.5 text-start font-semibold">
                   <span className="flex items-center gap-2">
                     <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: r.color }} aria-hidden />
                     <span className="whitespace-nowrap">{r.name}</span>
@@ -222,7 +227,7 @@ export function DepartmentTable({ model, c }: { model: ChartModel; c: Copy }) {
                 <td className={td}>{r.agents === null ? '' : num(r.agents)}</td>
                 <td className={td}>{num(r.d.sent)}</td>
                 <td className={td}>{num(r.d.received)}</td>
-                <td className="px-3 py-1.5">
+                <td className="px-3 py-1">
                   <Sparkline values={r.d.daily} label={c.sparkLabel(r.d.daily.map(num).join('، '))} className="h-6 w-20" />
                 </td>
               </tr>
@@ -240,7 +245,7 @@ export function DepartmentTable({ model, c }: { model: ChartModel; c: Copy }) {
             </tr>
           </tfoot>
         </table>
-      </Card>
+      </div>
     </section>
   );
 }

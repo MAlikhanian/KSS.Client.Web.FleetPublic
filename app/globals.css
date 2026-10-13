@@ -57,6 +57,7 @@
   --dept-support: #db2777;
   /* Every other department, grouped: a neutral slate. */
   --dept-other: #64748b;
+  --org-line: #aab4c3;
 }
 
 /* Dark tokens: the system preference when no choice was made, or an explicit choice. */
@@ -81,6 +82,7 @@
     --dept-network: #2dd4bf;
     --dept-support: #f472b6;
     --dept-other: #94a3b8;
+    --org-line: #44536b;
   }
 }
 :root[data-theme='dark'] {
@@ -103,6 +105,7 @@
   --dept-network: #2dd4bf;
   --dept-support: #f472b6;
   --dept-other: #94a3b8;
+  --org-line: #44536b;
 }
 
 /* The tokens as Tailwind theme values: bg-card, text-muted-foreground, border-border, rounded-card, ... */
@@ -135,6 +138,281 @@
   --text-lg: 1.125rem;
   --text-xl: 1.375rem;
   --text-2xl: 1.75rem;
+}
+
+/*
+ * The page's repeated parts as short classes. The page repeats them ~180 times, and the framework sends the markup
+ * twice (HTML and the hydration payload), so a long utility list per person cost the page hundreds of kilobytes.
+ */
+@layer components {
+  /* Cards: the surface, its header row and title, its body; a team card's lead row and member list. */
+  .card {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--card);
+    color: var(--card-foreground);
+  }
+  .card-h {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 1rem;
+  }
+  .card-h.tight {
+    align-items: center;
+    padding-block: 0.625rem;
+  }
+  .card-t {
+    margin: 0;
+    min-width: 0;
+    font-size: var(--text-base);
+    line-height: 1.375;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+  }
+  .card-b {
+    min-width: 0;
+    padding: 0.75rem 1rem;
+  }
+  .lead-row {
+    margin: 0;
+    list-style: none;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--muted) 60%, transparent);
+    padding: 0.125rem 1rem;
+  }
+  .people {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  @media (width >= 64rem) {
+    .card-h,
+    .card-b {
+      padding-inline: 1.25rem;
+    }
+    .lead-row {
+      padding-inline: 1.25rem;
+    }
+  }
+
+  /* An agent's avatar: a photo inside, or (empty) the generic silhouette; always the "AI" badge. */
+  .av {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 9999px;
+    background: var(--muted);
+    box-shadow: 0 0 0 2px var(--card);
+  }
+  .av-md {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+  .av > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 9999px;
+    object-fit: cover;
+  }
+  .av:empty::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: var(--muted-foreground);
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='14' r='6.5'/%3E%3Cpath d='M5.5 33c1.9-6.6 6.7-10.2 12.5-10.2S28.6 26.4 30.5 33z'/%3E%3C/svg%3E") center / 100% no-repeat;
+  }
+  .av::after {
+    content: 'AI';
+    position: absolute;
+    inset-inline-end: -0.25rem;
+    bottom: -0.125rem;
+    padding: 1px 3px;
+    border-radius: 9999px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    box-shadow: 0 0 0 2px var(--card);
+    font-size: 0.5rem;
+    font-weight: 800;
+    line-height: 1;
+    direction: ltr;
+  }
+  .av-md::after {
+    padding: 2px 3px;
+    font-size: 0.5625rem;
+  }
+
+  /* One person on one line: avatar, name and role, then the last activity at the end. */
+  /* In a narrow card the last activity wraps under the name instead of crowding it. */
+  .pl {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 0.625rem;
+    padding-block: 0.125rem;
+  }
+  .pl-t {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 8rem;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.125rem 0.5rem;
+    font-size: var(--text-sm);
+    line-height: 1.5rem;
+  }
+  /* Two short lines (wide department cards): name and role, then rooms and the last activity. */
+  .pl-s {
+    align-items: flex-start;
+    padding-block: 0.375rem;
+  }
+  .pl-s .pl-t {
+    display: grid;
+    gap: 0.125rem;
+    line-height: 1.25rem;
+  }
+  .pl-s .pl-t > span {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.125rem 0.5rem;
+  }
+  .pl-t > bdi:first-child,
+  .pl-t > span > bdi:first-child {
+    font-weight: 600;
+  }
+  .pl.lead .pl-t > bdi:first-child {
+    font-weight: 800;
+  }
+  .line-role,
+  .la {
+    color: var(--muted-foreground);
+  }
+  .la {
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    white-space: nowrap;
+  }
+  .pl > .la {
+    margin-inline-start: auto;
+  }
+  .pl-s .la {
+    white-space: normal;
+  }
+
+  /* Room chips: a plain label, or a partner (a person: face and name, never an AI badge). */
+  .rooms {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .room {
+    border-radius: 9999px;
+    background: var(--muted);
+    padding-inline: 0.5rem;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    line-height: 1.25rem;
+  }
+  .room.partner {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border: 1px solid color-mix(in srgb, var(--foreground) 30%, transparent);
+    background: var(--card);
+    padding: 1px 0.5rem 1px 1px;
+    color: var(--foreground);
+    font-weight: 600;
+  }
+  [dir='rtl'] .room.partner {
+    padding: 1px 1px 1px 0.5rem;
+  }
+
+  /* A sparkline: one bar per day, its height inline; an empty or suppressed day in the border colour. */
+  .spark {
+    display: flex;
+    height: 2rem;
+    width: 6rem;
+    flex-shrink: 0;
+    align-items: flex-end;
+    gap: 3px;
+  }
+  .spark > i {
+    min-width: 0;
+    flex: 1;
+    border-radius: 2px;
+    background: var(--primary);
+  }
+  .spark > i.z {
+    background: var(--border);
+  }
+}
+
+/* Organisation chart lines: a bus over a row, a tick down to each card of its first row, a stem between levels. */
+@utility org-bus {
+  position: relative;
+  padding-top: 1.5rem;
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    inset-inline-start: var(--bs, calc((100% - (var(--n, 1) - 1) * 1rem) / (2 * var(--n, 1))));
+    inset-inline-end: var(--be, calc((100% - (var(--n, 1) - 1) * 1rem) / (2 * var(--n, 1))));
+    border-top: 2px solid var(--org-line);
+  }
+}
+@utility org-tick {
+  position: relative;
+  &::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: calc(50% - 1px);
+    top: -1.5rem;
+    height: 1.5rem;
+    border-inline-start: 2px solid var(--org-line);
+  }
+}
+@utility org-join {
+  position: relative;
+  padding-bottom: 1.5rem;
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    inset-inline: calc((100% - (var(--n, 1) - 1) * 1rem) / (2 * var(--n, 1)));
+    border-top: 2px solid var(--org-line);
+  }
+}
+@utility org-tick-down {
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    inset-inline-start: calc(50% - 1px);
+    bottom: -1.5rem;
+    height: 1.5rem;
+    border-inline-start: 2px solid var(--org-line);
+  }
+}
+@utility org-stem {
+  display: block;
+  width: 2px;
+  height: 1.5rem;
+  margin-inline: auto;
+  background: var(--org-line);
 }
 
 /* Dark theme only: the dark sidebar needs an edge against a dark page. */

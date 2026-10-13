@@ -72,6 +72,10 @@ function people() {
   return rows;
 }
 
+// Room labels for the mock: invented desks (shown as served) and the page's known labels (four partners and a
+// trading room, see components/partners.ts); one agent has the same label twice.
+const MOCK_ROOMS = [['North Desk'], ['Amir Mortazavi'], ['South Desk'], ['Bybit trading', 'North Desk', 'Bybit trading'], ['West Desk', 'Matin'], ['East Desk'], ['Babak Ghiasi'], ['Harbor Desk'], ['Central Desk'], ['Mahmoud Danesh'], ['Bay Desk'], ['Hill Desk'], ['River Desk'], ['Lake Desk'], ['Park Desk'], ['Port Desk']];
+
 function utcDay(offset) {
   return new Date(Date.now() - offset * 86_400_000).toISOString().slice(0, 10);
 }
@@ -100,7 +104,7 @@ export function makeSnapshot(mode = 'ok') {
           // As served: a SUPPRESSED day (fewer than 3) is null; a true zero would be 0.
           activity7d: Array.from({ length: 7 }, (_, d) => ((i * 3 + d * 5) % 9 < 3 ? null : (i * 3 + d * 5) % 9)),
           // Support rooms (invented labels): every third support agent has two private clients and a named room.
-          rooms: r.department !== 'Customer Support' ? null : i % 3 === 0 ? ['Private client', 'North Desk', 'Private client'] : ['South Desk'],
+          rooms: r.department !== 'Customer Support' ? null : MOCK_ROOMS[(i - 6) % MOCK_ROOMS.length],
         }
       : {}),
   }));

@@ -38,7 +38,7 @@ export function StackedBars({
       data-testid="stacked-bars"
     >
       <div aria-hidden dir="ltr" className="grid min-w-0 gap-1.5">
-        <div className="grid h-52 grid-flow-col [grid-auto-columns:minmax(0,1fr)] items-end gap-1.5 border-b border-border pt-6 sm:gap-3 lg:h-64">
+        <div className="grid h-52 grid-flow-col [grid-auto-columns:minmax(0,1fr)] items-end gap-1.5 border-b border-border pt-6 sm:gap-3 lg:h-64 xl:h-[18.5rem]">
           {labels.map((label, i) => (
             <div
               key={label}

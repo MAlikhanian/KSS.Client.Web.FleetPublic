@@ -4,7 +4,7 @@
 // `next start` and the mock on free local ports and stops both. Nothing is left
 // running.
 //
-// The pages are cached (ISR, 30 s), so a change of the mock's state shows only after
+// The pages are cached (ISR, 120 s), so a change of the mock's state shows only after
 // a regeneration: the tests wait for it. Each app starts from the BUILD's pages (the
 // notice), restored and marked stale, and the build's pages are put back at the end.
 //
@@ -12,7 +12,7 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { register } from 'node:module';
@@ -26,6 +26,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { parseSnapshot, buildChart } = await import('../components/snapshot.ts');
 const { roleTitle, departmentTitle } = await import('../components/public-titles.ts');
 const { STORY_CLAIMS } = await import('../components/copy.ts');
+const { ROOM_LABELS } = await import('../components/partners.ts');
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 // Any of the mock's ordinals as a standalone number (870001..870103).
@@ -94,7 +95,7 @@ async function startApp(env) {
 const chartState = (html) => (html.match(/data-chart-state="([a-z]+)"/) ?? [])[1] ?? null;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Requests a page until `ok(html)` holds (a regeneration takes one stale hit plus a moment). */
-async function settle(base, route, ok, ms = 80_000) {
+async function settle(base, route, ok, ms = 200_000) {
   const end = Date.now() + ms;
   let html = '';
   while (Date.now() < end) {
@@ -261,7 +262,7 @@ describe('snapshot parser', () => {
   });
 });
 
-describe('served pages against the snapshot service, every state', { timeout: 600_000 }, () => {
+describe('served pages against the snapshot service, every state', { timeout: 2_400_000 }, () => {
   let mock;
   let app;
   let firstState = {};
@@ -303,6 +304,18 @@ describe('served pages against the snapshot service, every state', { timeout: 60
     assert.equal((await fetch(`${app.base}/avatars/nobody.webp`)).status, 404);
   });
 
+  test('the stylesheet draws the AI badge on every avatar and the generic silhouette', () => {
+    const dir = path.join(ROOT, '.next', 'static', 'css');
+    const css = readdirSync(dir).filter((f) => f.endsWith('.css')).map((f) => readFileSync(path.join(dir, f), 'utf8')).join('');
+    assert.match(css, /\.av:after\{content:"AI"|\.av::after\{content:"AI"/, 'the badge: "AI" after every .av');
+    assert.match(css, /\.av:empty:before|\.av:empty::before/, 'the silhouette for an avatar without a photo');
+  });
+
+  test('the cache header: shared caches keep the page 120 s, then serve it stale while it regenerates', async () => {
+    const res = await fetch(`${app.base}/en`);
+    assert.match(res.headers.get('cache-control') ?? '', /^s-maxage=120, stale-while-revalidate/);
+  });
+
   test('the page is served from the cache, not rendered per request', async () => {
     const res = await fetch(app.base + '/');
     assert.match(res.headers.get('x-nextjs-cache') ?? '', /^(HIT|STALE)$/);
@@ -341,11 +354,10 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       assert.ok(!html.includes('data-testid="hours-chart"'), `${route}: no hourly chart when the service sends no hours`);
       assert.ok(html.includes('data-testid="team-mix"'), `${route}: the team mix`);
       // Avatars: a photo where a file exists, the generic silhouette otherwise, never an initial; an AI badge on each.
-      const avatars = (html.match(/data-testid="avatar"/g) ?? []).length;
+      const avatars = (html.match(/class="av[ "]/g) ?? []).length;
       assert.ok(avatars >= 103, `${route}: an avatar for every person (${avatars})`);
-      assert.equal((html.match(/data-testid="ai-badge"/g) ?? []).length, avatars, `${route}: an AI badge on every avatar`);
       assert.match(html, new RegExp(`<img src="/avatars/${PHOTO}\\.webp" srcSet="/avatars/${PHOTO}\\.webp 1x, /avatars/${PHOTO}@2x\\.webp 2x"[^>]*loading="lazy"`), `${route}: the photo, 1x and 2x, lazy`);
-      assert.ok(html.includes('data-testid="avatar-generic"'), `${route}: the generic avatar for agents without a photo`);
+      assert.ok(/<span role="img" aria-label="[^"]+" class="av"><\/span>/.test(html), `${route}: the generic avatar (an empty av) for agents without a photo`);
       const srcs = [...html.matchAll(/<img [^>]*src="([^"]+)"/g)].map((m) => m[1]);
       assert.ok(srcs.length > 0 && srcs.every((s) => /^\/avatars\/[a-z][a-z0-9-]*\.webp$/.test(s)), `${route}: every image is our own avatar file, by slug only`);
       const label = route === '/' ? '، عامل هوش مصنوعی' : ', AI agent';
@@ -354,16 +366,15 @@ describe('served pages against the snapshot service, every state', { timeout: 60
     }
   });
 
-  test('rows: role and department, a reports-to line, the update time; no per-person colour; fa translates every name', async () => {
+  test('rows: the role alone, no reports-to line (the chart draws it), the update time; no per-person colour; fa translates every name', async () => {
     mock.state.mode = 'ok';
     for (const route of ['/', '/en']) {
       const { html } = await page(route);
       const fa = route === '/';
       const rows = [...html.matchAll(/class="line-role[^"]*">([\s\S]*?)<\/span>/g)].map((m) => stripTags(m[1]));
       assert.equal(rows.length, 103, route + ': every person has a role line');
-      assert.ok(rows.every((r) => r.includes(' · ')), route + ': each role line carries the department');
-      assert.equal((html.match(/class="line-reports[ "]/g) ?? []).length, 102, route + ': everyone but the CEO has a reports-to line');
-      assert.ok(html.includes(fa ? 'گزارش به ' : 'Reports to '), route + ': reports-to wording');
+      assert.ok(rows.every((r) => !r.includes(' · ')), route + ': a role line does not repeat the department');
+      assert.ok(!html.includes('line-reports') && !html.includes(fa ? 'گزارش به ' : 'Reports to '), route + ': no reports-to line');
       assert.match(html, /data-testid="chart-updated">(?:<span[^>]*><\/span>)?<time dateTime="\d{4}-\d{2}-\d{2}T/, route + ': the update time is shown');
       assert.ok(html.includes(fa ? 'به وقت تهران' : 'UTC'), route + ': the update time names its zone');
       assert.doesNotMatch(html, /style="--/, route + ': no inline colour variable');
@@ -378,6 +389,54 @@ describe('served pages against the snapshot service, every state', { timeout: 60
     }
   });
 
+  test('the organisation chart: the human management, the CEO, the heads in their own boxes, the pairing; 4 teams per row', async () => {
+    mock.state.mode = 'ok';
+    for (const route of ['/', '/en']) {
+      const { html } = await page(route);
+      const fa = route === '/';
+      const humans = [...html.matchAll(/<section[^>]*data-testid="human-node"[^>]*>([\s\S]*?)<\/section>/g)].map((m) => m[1]);
+      const want = fa
+        ? [['محمد', 'بنیان‌گذار'], ['محمود دانش', 'رئیس هیئت‌مدیره'], ['امیر مرتضوی', 'مدیر ارشد فناوری'], ['بابک غیاثی', 'مدیر ارشد شبکه']]
+        : [['Mohammad', 'Founder'], ['Mahmoud Danesh', 'Chairman'], ['Amir Mortazavi', 'CTO'], ['Babak Ghiasi', 'CNO']];
+      assert.equal(humans.length, 4, route + ': four people in the human management');
+      want.forEach(([name, role], i) => {
+        assert.ok(humans[i].includes(`aria-label="${name}${fa ? '، ' : ', '}${role}"`), route + ': ' + name + ' is named with the role');
+        assert.ok(!humans[i].includes('ai-badge') && !/AI agent|عامل هوش مصنوعی/.test(humans[i]) && !humans[i].includes('class="la"'), route + ': ' + name + ' is a person: no AI badge, no AI label, no activity');
+      });
+      assert.ok(humans[0].includes('data-testid="person-icon"'), route + ': the founder keeps the person icon');
+      assert.ok(humans[1].includes('data-testid="person-icon"'), route + ': the chairman shows the icon until his photo is published');
+      assert.ok(humans[2].includes('srcSet="/avatars/partner-amir.webp 1x, /avatars/partner-amir@2x.webp 2x"'), route + ': the human CTO photo, 1x and 2x');
+      assert.ok(humans[3].includes('src="/avatars/partner-babak.webp"'), route + ': the human CNO photo');
+      // Paired with: both sides, in words, at every width.
+      const paired = fa ? 'همراه با' : 'Paired with';
+      const ai = Object.fromEntries(SAMPLE.agents.filter((a) => ['CTO', 'CNO'].includes(a.role)).map((a) => [a.role, a.firstName]));
+      const chips = [...html.matchAll(/data-testid="pair-chip"><bdi>([^<]*)</g)].map((m) => m[1]);
+      assert.deepEqual(chips.sort(), [`${paired} ${ai.CTO}`, `${paired} ${ai.CNO}`, `${paired} ${want[2][0]}`, `${paired} ${want[3][0]}`].sort(), route + ': each pair named on both boxes');
+      // The AI organisation under them: one CEO node, the three heads and the executive office in their own boxes.
+      const clevel = html.slice(html.indexOf('data-testid="lead-clevel"'), html.indexOf('aria-labelledby="departments"'));
+      assert.equal((clevel.match(/data-testid="org-node"/g) ?? []).length, 3, route + ': COO, CTO and CNO each in her own box');
+      assert.ok(clevel.includes('data-testid="lead-office"'), route + ': the executive office in its own box');
+      assert.equal((html.match(/data-testid="org-node"/g) ?? []).length, 4, route + ': the CEO above them');
+      assert.equal((html.match(/data-testid="branch-root"/g) ?? []).length, 3, route + ': each branch hangs from its head');
+      // Engineering: 4 per row on a wide screen; the short last row (17 = 4×4 + 1) takes the full width.
+      const spans = [...html.matchAll(/<section[^>]*data-box-kind="lead"[^>]*class="([^"]*)"|<section[^>]*class="([^"]*)"[^>]*data-box-kind="lead"/g)].map((m) => m[1] ?? m[2]);
+      assert.equal(spans.length, 17, route + ': 17 team cards');
+      assert.equal(spans.filter((c) => c.includes('xl:col-span-3')).length, 16, route + ': four per row');
+      assert.equal(spans.filter((c) => c.includes('xl:col-span-12')).length, 1, route + ': the last card fills its row');
+      assert.equal(spans.filter((c) => c.includes('md:col-span-12')).length, 1, route + ': on a tablet too (two per row)');
+    }
+  });
+
+  test('the room-label manifest: exactly the five labels the service writes, people never marked as AI', () => {
+    assert.deepEqual(
+      ROOM_LABELS.map((r) => r.label),
+      ['Amir Mortazavi', 'Babak Ghiasi', 'Matin', 'Mahmoud Danesh', 'Bybit trading'],
+    );
+    assert.deepEqual(ROOM_LABELS.filter((r) => r.kind === 'person').map((r) => r.photo), ['partner-amir', 'partner-babak', 'partner-matin', 'partner-mahmoud']);
+    assert.equal(ROOM_LABELS.find((r) => r.label === 'Bybit trading').kind, 'label');
+    for (const r of ROOM_LABELS) assert.ok(r.name.fa && r.name.en && !/AI|هوش مصنوعی/.test(r.name.fa + r.name.en), r.label + ': both names, no AI wording');
+  });
+
   test('dashboard chrome: a section menu whose every link lands on a section, a theme switch, the theme set before paint', async () => {
     mock.state.mode = 'ok';
     for (const route of ['/', '/en']) {
@@ -387,20 +446,20 @@ describe('served pages against the snapshot service, every state', { timeout: 60
         return [...html.slice(from, html.indexOf('</nav>', from)).matchAll(/href="#([a-z]+)"/g)].map((m) => m[1]);
       };
       const links = menuOf('side-menu');
-      assert.deepEqual(links, ['overview', 'usage', 'what', 'activity', 'teams', 'how'], route + ': the sidebar lists the dashboard sections');
+      assert.deepEqual(links, ['overview', 'usage', 'activity', 'what', 'teams', 'how'], route + ': the sidebar lists the dashboard sections');
       assert.deepEqual(menuOf('section-menu'), links, route + ': the phone menu lists the same');
       for (const id of links) assert.match(html, new RegExp('id="' + id + '"'), route + ': #' + id + ' exists');
       assert.ok(html.includes('data-testid="sidebar"'), route + ': the dark sidebar');
       assert.ok(html.includes('data-testid="theme-toggle"'), route + ': the theme switch is there');
       assert.ok(html.includes("localStorage.getItem('fleet-theme')"), route + ': a stored theme is applied before paint');
       assert.equal((html.match(/data-testid="stat"/g) ?? []).length, 4, route + ': four stat cards without the active-now figure');
-      assert.ok(!html.includes('data-testid="last-active"'), route + ': no last-active text when the service sends none');
+      assert.ok(!html.includes('class="la"'), route + ': no last-active text when the service sends none');
       assert.ok(!html.includes('data-testid="team-activity"'), route + ': no team graph when the service sends none');
     }
   });
 
   test('full fields on the page: public titles in the page language, last active, team graphs, the active-now tile', async () => {
-    await switchTo('full', (h) => h.includes('data-testid="team-lead"'));
+    await switchTo('full', (h) => h.includes('data-testid="usage-account"'));
     for (const route of ['/', '/en']) {
       const { html } = await page(route);
       const lang = route === '/' ? 'fa' : 'en';
@@ -410,9 +469,9 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       const published = TEAM_TITLES.filter(Boolean).length;
       assert.equal(titles.filter((p) => p.length === 2).length, published, route + ': a titled team is "title · count"');
       assert.equal(titles.filter((p) => p.length === 3).length, 17 - published, route + ': an untitled team keeps "lead · role · count"');
-      assert.equal((html.match(/data-testid="team-lead"/g) ?? []).length, published, route + ': a titled card still names its lead');
-      assert.equal((html.match(/data-testid="last-active"/g) ?? []).length, 103, route + ': every person shows the time of her last activity');
-      const lines = [...html.matchAll(/data-testid="last-active">([^<]*)</g)].map((m) => m[1]);
+      assert.equal((html.match(/data-testid="team-lead"/g) ?? []).length, 17, route + ': every team card shows its lead first');
+      assert.equal((html.match(/class="la"/g) ?? []).length, 103, route + ': every person shows the time of her last activity');
+      const lines = [...html.matchAll(/class="la">([^<]*)</g)].map((m) => m[1]);
       assert.equal(lines.length, 103, route + ': each last-activity entry is one plain line, no badge inside');
       // Minutes only within the hour; then a band. The mock spreads times over 2 min, 70 min, 25 h and 73 h.
       const bands = lang === 'fa' ? ['آخرین فعالیت: ', 'فعالیت امروز', 'این هفته', 'آماده به کار'] : ['Last activity: ', 'Active today', 'This week', 'Standby'];
@@ -442,13 +501,28 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       assert.ok(html.includes(lang === 'fa' ? 'آخرین خوانش: ' : 'As of '), route + ': the reading time');
       // Rooms under support agents; a repeated label once, with its count.
       assert.ok(html.includes('data-testid="rooms"'), route + ': the room slot');
-      assert.ok(html.includes(lang === 'fa' ? 'Private client ×۲' : 'Private client ×2'), route + ': "Private client ×2"');
-      assert.ok(!/Private client<\/bdi>[^]*?Private client<\/bdi>/.test(html.slice(html.indexOf('data-testid="rooms"'), html.indexOf('</ul>', html.indexOf('data-testid="rooms"')))), route + ': never listed twice in one slot');
+      const bybit = lang === 'fa' ? 'معاملات Bybit' : 'Bybit trading';
+      assert.ok(html.includes(lang === 'fa' ? `${bybit} ×۲` : `${bybit} ×2`), route + ': a repeated label once, with its count, in the page language');
+      const slot = html.slice(html.indexOf(bybit) - 400, html.indexOf('</ul>', html.indexOf(bybit)));
+      assert.equal(slot.split(bybit).length - 1, 1, route + ': never listed twice in one slot');
+      assert.ok(html.includes('North Desk'), route + ': a label the page does not know is shown as served');
+      // Partners are people: name in the page language, a photo or the person icon, never an AI badge.
+      const chips = [...html.matchAll(/<li[^>]*data-testid="room-partner"[^>]*>([\s\S]*?)<\/li>/g)].map((m) => m[1]);
+      assert.equal(chips.length, 4, route + ': four partner chips');
+      for (const p of ROOM_LABELS.filter((x) => x.kind === 'person')) assert.ok(chips.some((ch) => stripTags(ch) === p.name[lang]), route + ': partner ' + p.name[lang]);
+      assert.ok(chips.every((ch) => !ch.includes('ai-badge') && !/AI agent|عامل هوش مصنوعی/.test(ch)), route + ': no AI badge or AI label on a partner');
+      assert.ok(chips.some((ch) => ch.includes('src="/avatars/partner-amir.webp"')), route + ': a published partner photo is used');
+      assert.ok(chips.some((ch) => ch.includes('data-testid="person-icon"')), route + ': the person icon until a photo is published');
+      // The Persian reset times are joined with «،», never a Latin comma.
+      if (lang === 'fa') {
+        const resets = [...html.matchAll(/>بازنشانی: ([^<]*)</g)].map((m) => m[1]);
+        assert.ok(resets.length > 0 && resets.every((t) => !t.includes(',') && t.includes('،')), '/: Persian commas in the reset times: ' + resets.join(' | '));
+      }
       assert.ok(!html.includes(PROJECT_CANARY), route + ': no internal project name');
       assert.ok(html.includes(lang === 'fa' ? 'کمتر از ۳' : 'fewer than 3'), route + ': a suppressed day reads as fewer than 3, never as none');
       assert.ok(html.includes(lang === 'fa' ? 'دست‌کم ' : 'at least '), route + ': a total over suppressed days is a lower bound');
     }
-    await switchTo('ok', (h) => chartState(h) === 'ok' && !h.includes('data-testid="team-lead"'));
+    await switchTo('ok', (h) => chartState(h) === 'ok' && !h.includes('data-testid="rooms"'));
   });
 
   test('usage staleness: over 30 minutes is marked possibly out of date; over 6 hours shows no numbers', async () => {
@@ -467,7 +541,7 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       assert.ok(html.includes(route === '/' ? 'خوانش تازه‌ای در دسترس نیست' : 'No recent reading'), route + ': "no recent reading"');
     }
     mock.state.usageAgeMinutes = null;
-    await switchTo('ok', (h) => chartState(h) === 'ok' && !h.includes('data-testid="team-lead"'));
+    await switchTo('ok', (h) => chartState(h) === 'ok' && !h.includes('data-testid="rooms"'));
   });
 
   test('the story: a headline with the LIVE count, the approved claims, four cards with live numbers, five steps', async () => {
@@ -570,7 +644,7 @@ describe('served pages against the snapshot service, every state', { timeout: 60
     test(`${mode}: a failed regeneration is never cached; the last good page stays, the reason is logged`, async () => {
       await switchTo('ok', (h) => chartState(h) === 'ok');
       mock.state.mode = mode;
-      await sleep(31_000); // past the cache period, so the next request regenerates (and fails)
+      await sleep(121_000); // past the cache period (120 s), so the next request regenerates (and fails)
       for (const route of ['/', '/en']) {
         await page(route); // the stale hit that starts the regeneration
         await sleep(2000);
@@ -598,7 +672,7 @@ describe('served pages against the snapshot service, every state', { timeout: 60
   });
 });
 
-describe('the one-day stale copy under ISR, and the update time', { timeout: 300_000 }, () => {
+describe('the one-day stale copy under ISR, and the update time', { timeout: 900_000 }, () => {
   let mock;
   let app;
   const G = '2026-10-01T08:30:00.000Z'; // a fixed snapshot time, far from any render time
@@ -621,7 +695,7 @@ describe('the one-day stale copy under ISR, and the update time', { timeout: 300
 
   test('the service fails: the regeneration renders from the one-day copy, the chart and its time stay', async () => {
     mock.state.mode = 'error';
-    await sleep(31_000);
+    await sleep(121_000); // past the cache period (120 s)
     await fetch(app.base + '/en'); // stale hit: regenerates from the in-process copy
     await sleep(2500);
     const html = await (await fetch(app.base + '/en')).text();
@@ -632,7 +706,7 @@ describe('the one-day stale copy under ISR, and the update time', { timeout: 300
   });
 });
 
-describe('cold start: a freshly started server with a healthy service', { timeout: 120_000 }, () => {
+describe('cold start: a freshly started server with a healthy service', { timeout: 300_000 }, () => {
   test('the first visitor gets "loading" with a self-reload, never "can\'t be shown"; data follows; the start is logged', async () => {
     const m = await startMock();
     const app = await startApp({ FLEET_PUBLIC_API_URL: `http://127.0.0.1:${m.port}` });

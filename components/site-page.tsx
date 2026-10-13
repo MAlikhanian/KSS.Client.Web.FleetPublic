@@ -1,5 +1,5 @@
 import { COPY, type Lang } from './copy';
-import { DepartmentTable, StatCards, UsageBand } from './dashboard';
+import { StatCards, UsageBand } from './dashboard';
 import { jsonLd } from './site';
 import { buildChart } from './snapshot';
 import { loadSnapshot } from './snapshot-server';
@@ -51,8 +51,8 @@ export async function SitePage({ lang }: { lang: Lang }) {
   const nav: [string, string][] = [
     ['overview', c.dash.nav.overview],
     ...(model ? ([['usage', c.dash.nav.usage]] as [string, string][]) : []),
-    ['what', c.dash.nav.what],
     ...(hasActivity ? ([['activity', c.dash.nav.activity]] as [string, string][]) : []),
+    ['what', c.dash.nav.what],
     ['teams', c.dash.nav.teams],
     ['how', c.dash.nav.how],
   ];
@@ -112,12 +112,11 @@ export async function SitePage({ lang }: { lang: Lang }) {
           </nav>
         </header>
 
-        <main className="grid grid-cols-1 gap-8 px-4 py-6 lg:px-6">
+        <main className="grid grid-cols-1 gap-6 px-4 py-6 lg:px-6">
           <Hero c={c} n={numbers} />
           {model ? <StatCards model={model} c={c} /> : null}
           {model ? <UsageBand model={model} c={c} /> : null}
           <WhatTheyDo c={c} n={numbers} />
-          {model ? <DepartmentTable model={model} c={c} /> : null}
           <section aria-labelledby="teams" className="grid min-w-0 grid-cols-1 gap-4">
             <h2 id="teams" className="m-0 text-xl font-extrabold">
               {c.story.teamTitle}

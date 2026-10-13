@@ -1,16 +1,21 @@
+import type { ReactNode } from 'react';
 import { photoFor } from './avatars';
+import { photoIfPublished, roomLabel } from './partners';
 import type { Copy } from './copy';
 import { departmentTitle, roleTitle } from './public-titles';
 import { type ChartBox, type ChartModel, type ChartPerson, type TeamDay } from './snapshot';
-import { Avatar, AvatarGroup } from './ui/avatar';
+import { Avatar } from './ui/avatar';
 import { Badge } from './ui/badge';
 import { Card, CardBody, CardHeader } from './ui/card';
+import { cn } from './ui/cn';
 import { Sparkline } from './ui/sparkline';
 
 /**
- * The live team: the leadership card, one card per engineering team, one per other department. Per person: an initial, first name, role and department, who she
- * reports to, and (when the service sends it) the time of her last activity. No identifier of any kind, no
- * per-person colour, no customer: a team is titled by its PUBLIC title from the service, or by its lead.
+ * The live team as one organisation chart, top to bottom: the human management (static page rows), the chief
+ * executive, the heads of department and the executive office, then each head's branch with its departments and
+ * teams. Lines show who reports to whom. Per agent: avatar, first name, role, (when the service sends it) the time of
+ * her last activity, and a support agent's rooms. No identifier of any kind, no per-person colour, no customer: a team
+ * is titled by its PUBLIC title from the service, or by its lead.
  */
 
 const norm = (s: string) => s.trim().toLowerCase();
@@ -43,28 +48,20 @@ const DAY_MS = 24 * 60 * 60_000;
 const dayIn = (ms: number, c: Copy) => new Date(ms).toLocaleDateString('en-CA', { timeZone: c.timeZone });
 
 /**
- * The last activity, the same muted line for everyone (a time, never an online state). Minutes only within the
- * last hour; after that a band: "Active today" (the same calendar day in the page's zone), "This week", then
- * "Standby" (older, or no time at all). `quiet` is false when the service sends no times: then nothing shows.
+ * The last activity as one short muted phrase (a time, never an online state). Minutes only within the last hour;
+ * after that a band: "Active today" (the same calendar day in the page's zone), "This week", then "Standby" (older,
+ * or no time at all). Null when the service sends no times at all (`quiet` false).
  */
-function LastActive({ p, now, c, quiet }: { p: ChartPerson; now: string | null; c: Copy; quiet: boolean }) {
+function lastActive(p: ChartPerson, now: string | null, c: Copy, quiet: boolean): string | null {
   if (!quiet) return null;
   const at = now ? Date.parse(now) : Date.now();
-  let text: string;
-  if (!p.lastActiveAt) text = c.story.standby;
-  else {
-    const t = Date.parse(p.lastActiveAt);
-    const ago = at - t;
-    if (ago < 60 * 60_000) text = c.lastActive(relative(p.lastActiveAt, now, c));
-    else if (dayIn(t, c) === dayIn(at, c)) text = c.story.activeToday;
-    else if (ago < 7 * DAY_MS) text = c.story.thisWeek;
-    else text = c.story.standby;
-  }
-  return (
-    <span className="basis-full text-xs text-muted-foreground" data-testid="last-active">
-      {text}
-    </span>
-  );
+  if (!p.lastActiveAt) return c.story.standby;
+  const t = Date.parse(p.lastActiveAt);
+  const ago = at - t;
+  if (ago < 60 * 60_000) return c.lastActive(relative(p.lastActiveAt, now, c));
+  if (dayIn(t, c) === dayIn(at, c)) return c.story.activeToday;
+  if (ago < 7 * DAY_MS) return c.story.thisWeek;
+  return c.story.standby;
 }
 
 /** A repeated room label is shown once with its count ("Private client ×2"), in the order first served. */
@@ -73,35 +70,64 @@ function Rooms({ rooms, c }: { rooms: string[] | null; c: Copy }) {
   const counts = new Map<string, number>();
   for (const r of rooms) counts.set(r, (counts.get(r) ?? 0) + 1);
   return (
-    <ul aria-label={c.roomsLabel} className="m-0 flex basis-full list-none flex-wrap gap-1 p-0 pt-0.5" data-testid="rooms">
-      {[...counts].map(([label, n]) => (
-        <li key={label} className="rounded-full bg-muted px-2 py-0.5 text-xs leading-5 text-muted-foreground" data-testid="room">
-          <bdi>{n > 1 ? c.roomTimes(label, n) : label}</bdi>
-        </li>
-      ))}
+    <ul aria-label={c.roomsLabel} className="rooms" data-testid="rooms">
+      {[...counts].map(([label, n]) => {
+        const known = roomLabel(label);
+        const shown = known ? known.name[c.lang] : label;
+        const text = <bdi>{n > 1 ? c.roomTimes(shown, n) : shown}</bdi>;
+        return known?.kind === 'person' ? (
+          <li key={label} className="room partner" data-testid="room-partner">
+            <PersonFace photo={known.photoSlug} size="xs" />
+            {text}
+          </li>
+        ) : (
+          <li key={label} className="room" data-testid="room">
+            {text}
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-function PersonRow({ p, c, now, strong, quiet }: { p: ChartPerson; c: Copy; now: string | null; strong?: boolean; quiet: boolean }) {
+/**
+ * One person: avatar, name and role on one line, the last activity at the end. `stacked` (wide department cards):
+ * name and role, then rooms and the last activity on a second short line. Styled by the `pl` classes (globals.css).
+ */
+function PersonLine({ p, c, now, quiet, lead, stacked }: { p: ChartPerson; c: Copy; now: string | null; quiet: boolean; lead?: boolean; stacked?: boolean }) {
   const n = names(c);
+  const when = lastActive(p, now, c, quiet);
+  const name = <bdi>{p.firstName}</bdi>;
+  const role = <span className="line-role">{n.role(p.role)}</span>;
+  const time = when ? (
+    <span className="la">
+      {when}
+    </span>
+  ) : null;
   return (
-    <li className="flex min-w-0 items-start gap-2.5 py-1.5" style={p.depth > 1 ? { paddingInlineStart: `${(p.depth - 1) * 0.75}rem` } : undefined}>
-      <Avatar photo={photoFor(p.firstName)} label={c.avatarLabel(p.firstName)} badge={c.aiBadge} />
-      <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm leading-6">
-        <bdi className={strong ? 'line-name font-extrabold' : 'line-name font-semibold'}>{p.firstName}</bdi>
-        <span className="line-role text-muted-foreground [overflow-wrap:anywhere]">
-          {n.role(p.role)} · {n.department(p.department)}
-        </span>
-        {p.reportsTo ? (
-          <span className="line-reports basis-full text-xs leading-5 text-muted-foreground">
-            {c.reportsTo('')}
-            <bdi>{p.reportsTo}</bdi>
+    <li className={cn('pl', stacked && 'pl-s', lead && 'lead')}>
+      <Avatar photo={photoFor(p.firstName)} label={c.avatarLabel(p.firstName)} size="sm" />
+      {stacked ? (
+        <span className="pl-t">
+          <span>
+            {name}
+            {role}
           </span>
-        ) : null}
-        <LastActive p={p} now={now} c={c} quiet={quiet} />
-        <Rooms rooms={p.rooms} c={c} />
-      </span>
+          <span>
+            <Rooms rooms={p.rooms} c={c} />
+            {time}
+          </span>
+        </span>
+      ) : (
+        <>
+          <span className="pl-t">
+            {name}
+            {role}
+            <Rooms rooms={p.rooms} c={c} />
+          </span>
+          {time}
+        </>
+      )}
     </li>
   );
 }
@@ -115,18 +141,19 @@ function ActivityFooter({ values, c }: { values: TeamDay[] | null; c: Copy }) {
   const shown = values.some((d) => d.partial) ? c.atLeast(total) : total;
   const dayLabel = (d: TeamDay) => (d.total === null ? c.underThree : d.partial ? c.atLeast(num(d.total)) : num(d.total));
   return (
-    <div className="mt-auto flex items-center justify-between gap-3 border-t border-border px-4 py-3 lg:px-5" data-testid="team-activity">
+    <span className="flex items-center gap-2" title={c.statMessages} data-testid="team-activity">
       <span className="text-xs text-muted-foreground">
-        {c.statMessages}: <span className="font-semibold text-foreground tabular-nums">{shown}</span>
+        <span className="sr-only">{c.statMessages}: </span>
+        <span className="font-semibold text-foreground tabular-nums">{shown}</span>
       </span>
-      <Sparkline values={values.map((d) => d.total)} label={c.sparkLabel(values.map(dayLabel).join('، '))} />
-    </div>
+      <Sparkline values={values.map((d) => d.total)} label={c.sparkLabel(values.map(dayLabel).join('، '))} className="h-5 w-14" />
+    </span>
   );
 }
 
 function SectionHead({ id, title, body, count, c }: { id: string; title: string; body?: string; count?: number; c: Copy }) {
   return (
-    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+    <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
       <h2 id={id} className="m-0 text-xl font-extrabold">
         {title}
       </h2>
@@ -136,9 +163,8 @@ function SectionHead({ id, title, body, count, c }: { id: string; title: string;
   );
 }
 
-const GRID = 'grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,19rem),1fr))]';
-
-function BoxCard({ box, c, now, quiet }: { box: ChartBox; c: Copy; now: string | null; quiet: boolean }) {
+/** A team or department card: the lead first (when there is one), then the members, one line each. */
+function BoxCard({ box, c, now, quiet, className, wide, col = '14rem' }: { box: ChartBox; c: Copy; now: string | null; quiet: boolean; className?: string; wide?: boolean; col?: string }) {
   const n = names(c);
   const title =
     box.kind === 'lead'
@@ -146,9 +172,14 @@ function BoxCard({ box, c, now, quiet }: { box: ChartBox; c: Copy; now: string |
         ? [box.project[c.lang]]
         : [box.lead.firstName, n.role(box.lead.role)]
       : [n.department(box.department)];
+  const lead = box.kind === 'lead' ? box.people[0] : null;
+  const members = lead ? box.people.slice(1) : box.people;
+  // A wide card (a full last row, a big department) lays its members out in columns.
+  const list = wide ? 'grid gap-x-6' : 'grid';
   return (
-    <Card data-box-kind={box.kind} className="flex flex-col">
+    <Card data-box-kind={box.kind} className={cn('flex flex-col', className)}>
       <CardHeader
+        className="tight"
         title={
           <>
             {title.map((part, i) => (
@@ -157,104 +188,325 @@ function BoxCard({ box, c, now, quiet }: { box: ChartBox; c: Copy; now: string |
                 <bdi>{part}</bdi>
               </span>
             ))}
-            <span>{countSuffix(box.size, c)}</span>
+            <span className="font-semibold text-muted-foreground">{countSuffix(box.size, c)}</span>
           </>
         }
         titleProps={{ 'data-box-title': box.kind }}
-        aside={<AvatarGroup people={box.people.map((p) => ({ photo: photoFor(p.firstName), label: c.avatarLabel(p.firstName) }))} moreLabel={c.more} badge={c.aiBadge} />}
+        aside={<ActivityFooter values={box.activity7d} c={c} />}
       />
-      {box.kind === 'lead' && box.project ? (
-        <p className="m-0 border-b border-border px-4 py-2 text-xs text-muted-foreground lg:px-5" data-testid="team-lead">
-          {c.teamLead}: <bdi>{box.lead.firstName}</bdi>
-        </p>
+      {lead ? (
+        <ul className="lead-row" data-testid="team-lead">
+          <PersonLine p={lead} c={c} now={now} quiet={quiet} lead />
+        </ul>
       ) : null}
-      <CardBody className="py-1.5">
-        <ul className="m-0 list-none divide-y divide-border p-0">
-          {box.people.map((p, i) => (
-            <PersonRow key={i} p={p} c={c} now={now} quiet={quiet} strong={p.depth === 0 && box.people.length > 1} />
+      <CardBody className="py-1">
+        <ul className={cn('people', list)} style={wide ? { gridTemplateColumns: `repeat(auto-fill,minmax(min(100%,${col}),1fr))` } : undefined}>
+          {members.map((p, i) => (
+            <PersonLine key={i} p={p} c={c} now={now} quiet={quiet} stacked={wide && box.kind === 'department'} />
           ))}
         </ul>
       </CardBody>
-      <ActivityFooter values={box.activity7d} c={c} />
     </Card>
   );
 }
 
-function Leadership({ model, c, now, quiet }: { model: ChartModel; c: Copy; now: string | null; quiet: boolean }) {
+/** A person as a chart node: avatar, name, role and last activity, centred. */
+function Node({ p, c, now, quiet, accent, className, children, pair }: { p: ChartPerson; c: Copy; now: string | null; quiet: boolean; accent: string; className?: string; children?: ReactNode; pair?: string | null }) {
   const n = names(c);
-  const ceo = model.strip.filter((p) => norm(p.role) === 'ceo');
-  const clevel = model.strip.filter((p) => ['coo', 'cto', 'cno'].includes(norm(p.role)));
-  const office = model.strip.filter((p) => !ceo.includes(p) && !clevel.includes(p));
-  const group = (label: string, people: ChartPerson[], testid: string) =>
-    people.length ? (
-      <div className="min-w-0" data-testid={testid}>
-        <h3 className="m-0 mb-1 text-sm font-extrabold text-muted-foreground">{label}</h3>
-        <ul className="m-0 grid list-none gap-x-6 p-0 [grid-template-columns:repeat(auto-fill,minmax(min(100%,15rem),1fr))]">
-          {people.map((p, i) => (
-            <PersonRow key={i} p={p} c={c} now={now} quiet={quiet} strong />
-          ))}
-        </ul>
-      </div>
-    ) : null;
+  const when = lastActive(p, now, c, quiet);
   return (
-    <section aria-labelledby="leadership">
-      <SectionHead id="leadership" title={c.leadership} count={model.strip.length} c={c} />
-      <Card data-testid="team-strip">
-        <CardBody className="grid gap-4 py-4">
-          {group(ceo.length ? n.role(ceo[0].role) : c.leadership, ceo, 'lead-ceo')}
-          {group(c.story.headsOfDepartment, clevel, 'lead-clevel')}
-          {group(c.story.executiveAssistants, office, 'lead-office')}
-        </CardBody>
-      </Card>
-    </section>
+    <Card className={cn('flex flex-col items-center gap-1 border-t-4 px-4 py-3 text-center', className)} style={{ borderTopColor: accent }} data-testid="org-node">
+      <Avatar photo={photoFor(p.firstName)} label={c.avatarLabel(p.firstName)} />
+      <bdi className="line-name text-base font-extrabold">{p.firstName}</bdi>
+      <span className="line-role text-sm leading-snug text-muted-foreground">{n.role(p.role)}</span>
+      {when ? (
+        <span className="la">
+          {when}
+        </span>
+      ) : null}
+      {pair ? <PairChip text={pair} /> : null}
+      {children}
+    </Card>
   );
 }
 
+/**
+ * The human management at the top of the chart: people, not agents. Static rows of the page (never from the
+ * snapshot): a photo when one is published, otherwise a plain person icon unlike the agents' silhouette; no AI badge,
+ * no activity, no rooms. The human CTO and CNO are each paired with an AI head of department (a dotted line).
+ */
+type Human = { name: string; role: string; photo?: string; pair?: 'cto' | 'cno' };
+const HUMANS: Record<'fa' | 'en', { top: Human[]; second: Human[]; paired: string; sep: string }> = {
+  fa: {
+    sep: '، ',
+    top: [
+      { name: 'محمد', role: 'بنیان‌گذار' },
+      { name: 'محمود دانش', role: 'رئیس هیئت‌مدیره', photo: 'partner-mahmoud' },
+    ],
+    second: [
+      { name: 'امیر مرتضوی', role: 'مدیر ارشد فناوری', photo: 'partner-amir', pair: 'cto' },
+      { name: 'بابک غیاثی', role: 'مدیر ارشد شبکه', photo: 'partner-babak', pair: 'cno' },
+    ],
+    paired: 'همراه با',
+  },
+  en: {
+    sep: ', ',
+    top: [
+      { name: 'Mohammad', role: 'Founder' },
+      { name: 'Mahmoud Danesh', role: 'Chairman', photo: 'partner-mahmoud' },
+    ],
+    second: [
+      { name: 'Amir Mortazavi', role: 'CTO', photo: 'partner-amir', pair: 'cto' },
+      { name: 'Babak Ghiasi', role: 'CNO', photo: 'partner-babak', pair: 'cno' },
+    ],
+    paired: 'Paired with',
+  },
+};
+
+/** A person's face: the photo when published, otherwise a plain person icon. Never an AI badge. */
+function PersonFace({ photo, size }: { photo: string | null; size: 'xs' | 'md' }) {
+  const box = size === 'xs' ? 'size-[18px]' : 'size-9';
+  return photo ? (
+    // eslint-disable-next-line @next/next/no-img-element -- our own static files
+    <img
+      src={`/avatars/${photo}.webp`}
+      srcSet={size === 'md' ? `/avatars/${photo}.webp 1x, /avatars/${photo}@2x.webp 2x` : undefined}
+      alt=""
+      width={size === 'xs' ? 18 : 36}
+      height={size === 'xs' ? 18 : 36}
+      loading="lazy"
+      decoding="async"
+      className={cn(box, 'shrink-0 rounded-full object-cover')}
+      data-testid="person-photo"
+    />
+  ) : (
+    <span aria-hidden className={cn(box, 'grid shrink-0 place-items-center rounded-full border border-foreground/60 bg-card text-foreground')} data-testid="person-icon">
+      <svg viewBox="0 0 24 24" className="size-[62%]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
+      </svg>
+    </span>
+  );
+}
+
+/** "Paired with <name>": the pairing in words, on both boxes, at every width (the dotted line is decoration). */
+function PairChip({ text }: { text: string }) {
+  return (
+    <span className="mt-1 inline-flex rounded-full border border-dashed border-foreground/40 px-2 text-xs leading-5 text-muted-foreground" data-testid="pair-chip">
+      <bdi>{text}</bdi>
+    </span>
+  );
+}
+
+function HumanNode({ h, pairName, paired, sep, className }: { h: Human; pairName?: string | null; paired: string; sep: string; className?: string }) {
+  return (
+    <Card className={cn('flex flex-col items-center gap-0.5 border-2 border-foreground/70 px-4 py-3 text-center', className)} data-testid="human-node">
+      <span role="img" aria-label={`${h.name}${sep}${h.role}`}>
+        <PersonFace photo={photoIfPublished(h.photo)} size="md" />
+      </span>
+      <bdi className="text-base font-extrabold">{h.name}</bdi>
+      <span className="text-sm text-muted-foreground">{h.role}</span>
+      {pairName ? <PairChip text={`${paired} ${pairName}`} /> : null}
+    </Card>
+  );
+}
+
+/** A card's span in the 12-column grid on a wide screen: 3 (four per row), or a short last row's share of the width. */
+const FILL_XL: Record<number, string> = { 3: 'xl:col-span-3', 4: 'xl:col-span-4', 6: 'xl:col-span-6', 12: 'xl:col-span-12' };
+
+/**
+ * Cards in a 12-column grid, 4 per row on a wide screen, 2 on a tablet, 1 on a phone. A short last row is
+ * stretched to the full width, so no row is ragged. Only the first row hangs from the bus line.
+ */
+function TeamGrid({ boxes, c, now, quiet }: { boxes: ChartBox[]; c: Copy; now: string | null; quiet: boolean }) {
+  const count = boxes.length;
+  const restXl = count % 4;
+  const restMd = count % 2;
+  return (
+    <div className="org-bus grid grid-cols-12 gap-x-4 gap-y-4 [--n:1] md:[--n:2] xl:[--n:4]">
+      {boxes.map((b, i) => {
+        const lastXl = restXl && i >= count - restXl;
+        const lastMd = restMd && i === count - 1;
+        const spanXl = lastXl ? 12 / restXl : 3;
+        return (
+          <BoxCard
+            key={i}
+            box={b}
+            c={c}
+            now={now}
+            quiet={quiet}
+            wide={spanXl > 6}
+            col="20rem"
+            className={cn('col-span-12', lastMd ? 'md:col-span-12' : 'md:col-span-6', FILL_XL[spanXl], i < 1 && 'org-tick', i < 2 && 'md:org-tick', i < 4 && 'xl:org-tick')}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/** A branch's heading on the start side and its root node in the middle, on one line from xl up. */
+function BranchHead({ root, children }: { root: ReactNode; children: ReactNode }) {
+  return (
+    <div className="grid items-end gap-x-4 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+      <div className="min-w-0 [&>div]:mb-0">{children}</div>
+      {root ? <div className="mt-3 xl:mt-0">{root}</div> : null}
+    </div>
+  );
+}
+
+/** A C-level at the root of her branch: a small node the branch's line hangs from. */
+function BranchRoot({ p, c, accent }: { p: ChartPerson; c: Copy; accent: string }) {
+  const n = names(c);
+  return (
+    <div className="flex justify-center">
+      <span className="inline-flex items-center gap-2.5 rounded-full border border-border border-s-4 bg-card py-1.5 ps-2 pe-4" style={{ borderInlineStartColor: accent }} data-testid="branch-root">
+        <Avatar photo={photoFor(p.firstName)} label={c.avatarLabel(p.firstName)} size="sm" />
+        <bdi className="text-sm font-extrabold">{p.firstName}</bdi>
+        <span className="text-sm text-muted-foreground">{n.role(p.role)}</span>
+      </span>
+    </div>
+  );
+}
+
+const ACCENT = { executive: 'var(--dept-executive)', engineering: 'var(--dept-engineering)', network: 'var(--dept-network)', support: 'var(--dept-support)', other: 'var(--dept-other)' };
+
+/**
+ * The live team as one organisation chart, top to bottom: the chief executive, with the executive office beside her;
+ * the heads of department under her; then each head's branch, with its departments and teams.
+ */
 export function TeamChart({ model, c }: { model: ChartModel; c: Copy }) {
   const now = model.generatedAt;
+  const n = names(c);
+  const quiet = model.activeNow !== null;
   const eng = model.boxes.filter((b) => !isNetwork(b) && (b.kind === 'lead' || norm(b.department) === 'engineering'));
   const network = model.boxes.filter(isNetwork);
   const other = model.boxes.filter((b) => !eng.includes(b) && !network.includes(b));
-  const n = names(c);
-  // Quiet bands only when the service sends last-activity times at all (an older service sends none).
-  const quiet = model.activeNow !== null;
+  const support = other.filter((b) => b.kind === 'department' && norm(b.department) === 'customer support');
+  const offices = other.filter((b) => !support.includes(b));
+  const role = (r: string) => model.strip.find((p) => norm(p.role) === r) ?? null;
+  const ceo = role('ceo');
+  const coo = role('coo');
+  const cto = role('cto');
+  const cno = role('cno');
+  const office = model.strip.filter((p) => ![ceo, coo, cto, cno].includes(p));
+  const heads = [coo && { p: coo, accent: ACCENT.support }, cto && { p: cto, accent: ACCENT.engineering }, cno && { p: cno, accent: ACCENT.network }].filter(Boolean) as { p: ChartPerson; accent: string }[];
+  const sum = (bs: ChartBox[]) => bs.reduce((a, b) => a + b.size, 0);
+  const H = HUMANS[c.lang];
+  const pairText = (k: 'cto' | 'cno') => {
+    const h = H.second.find((x) => x.pair === k);
+    return h ? `${H.paired} ${h.name}` : null;
+  };
+
   return (
     <div className="grid gap-8" data-chart-state="ok">
-      {model.strip.length ? <Leadership model={model} c={c} now={now} quiet={quiet} /> : null}
+      {model.strip.length ? (
+        <section aria-labelledby="leadership" data-testid="team-strip">
+          <h2 id="leadership" className="sr-only">{c.leadership}</h2>
+          <div className="grid xl:grid-cols-4 xl:gap-x-4">
+            <div className="org-join grid gap-4 [--n:1] sm:grid-cols-2 sm:[--n:2] xl:col-span-2 xl:col-start-2 xl:row-start-1" data-testid="org-humans">
+              {H.top.map((h, i) => (
+                <HumanNode key={i} h={h} paired={H.paired} sep={H.sep} className="sm:org-tick-down" />
+              ))}
+            </div>
+            <span className="org-stem xl:col-span-4 xl:row-start-2" aria-hidden />
+            <div className="org-bus relative grid gap-4 [--n:1] sm:grid-cols-2 sm:[--n:2] xl:col-span-2 xl:col-start-2 xl:row-start-3" data-testid="org-humans-second">
+              <span className="absolute inset-y-0 start-1/2 -ms-px hidden w-0.5 bg-[var(--org-line)] sm:block" aria-hidden />
+              {H.second.map((h, i) => (
+                <HumanNode key={i} h={h} paired={H.paired} sep={H.sep} pairName={h.pair === 'cto' ? cto?.firstName : h.pair === 'cno' ? cno?.firstName : null} className={cn(i < 1 && 'org-tick', 'sm:org-tick')} />
+              ))}
+            </div>
+            {ceo ? (
+              <div className="grid xl:col-span-4 xl:col-start-1 xl:row-start-4">
+                <span className="org-stem" aria-hidden />
+                <Node p={ceo} c={c} now={now} quiet={quiet} accent={ACCENT.executive} className="mx-auto w-full max-w-[17rem]" />
+                <span className="org-stem" aria-hidden />
+              </div>
+            ) : null}
+            {/* The human-AI pairing, drawn from xl up: a dotted line from each human head down to her AI counterpart. */}
+            <span className="relative hidden xl:col-start-2 xl:row-start-4 xl:block" aria-hidden>
+              <span className="absolute start-[22%] top-0 -bottom-6 border-s-2 border-dashed border-foreground/45" />
+            </span>
+            <span className="relative hidden xl:col-start-3 xl:row-start-4 xl:block" aria-hidden>
+              <span className="absolute end-[22%] top-0 -bottom-6 border-s-2 border-dashed border-foreground/45" />
+            </span>
+            {heads.length || office.length ? (
+              <div className="xl:col-span-4 xl:row-start-5">
+                <h3 className="sr-only">{c.story.headsOfDepartment}</h3>
+                <div className="org-bus grid gap-4 [--n:1] sm:grid-cols-2 sm:[--n:2] xl:grid-cols-4 xl:[--n:4]" data-testid="lead-clevel">
+                  {heads.map((h, i) => (
+                    <Node
+                      key={i}
+                      p={h.p}
+                      c={c}
+                      now={now}
+                      quiet={quiet}
+                      accent={h.accent}
+                      pair={h.p === cto ? pairText('cto') : h.p === cno ? pairText('cno') : null}
+                      className={cn(i < 1 && 'org-tick', i < 2 && 'sm:org-tick', 'xl:org-tick')}
+                    />
+                  ))}
+                  {office.length ? (
+                    <Card className="xl:org-tick flex flex-col border-t-4 px-4 py-3" style={{ borderTopColor: ACCENT.executive }} data-testid="lead-office">
+                      <h4 className="m-0 mb-1 text-center text-base font-extrabold">{c.story.executiveAssistants}</h4>
+                      <ul className="m-0 grid list-none p-0">
+                        {office.map((p, i) => (
+                          <PersonLine key={i} p={p} c={c} now={now} quiet={quiet} />
+                        ))}
+                      </ul>
+                    </Card>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      {support.length || offices.length ? (
+        <section aria-labelledby="departments">
+          <BranchHead root={coo && <BranchRoot p={coo} c={c} accent={ACCENT.support} />}>
+            <SectionHead id="departments" title={c.nav.departments} body={c.departmentsBody} count={sum(other)} c={c} />
+          </BranchHead>
+          <span className="org-stem" aria-hidden />
+          <div className="org-bus grid grid-cols-1 gap-4 [--n:1] xl:grid-cols-4 xl:[--bs:calc(37.5%_-_0.125rem)] xl:[--be:calc(12.5%_-_0.375rem)]">
+            {support.map((b, i) => (
+              <BoxCard key={i} box={b} c={c} now={now} quiet={quiet} wide col="19rem" className="org-tick xl:col-span-3" />
+            ))}
+            {offices.length ? (
+              <div className={cn('grid content-start gap-4 md:grid-cols-3 xl:grid-cols-1', support.length ? 'xl:org-tick' : 'org-tick')}>
+                {offices.map((b, i) => (
+                  <BoxCard key={i} box={b} c={c} now={now} quiet={quiet} />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {eng.length ? (
         <section aria-labelledby="engineering">
-          <SectionHead id="engineering" title={n.department('Engineering')} body={c.engineeringBody} count={eng.reduce((a, b) => a + b.size, 0)} c={c} />
-          <div className={GRID}>
-            {eng.map((b, i) => (
-              <BoxCard key={i} box={b} c={c} now={now} quiet={quiet} />
-            ))}
-          </div>
+          <BranchHead root={cto && <BranchRoot p={cto} c={c} accent={ACCENT.engineering} />}>
+            <SectionHead id="engineering" title={n.department('Engineering')} body={c.engineeringBody} count={sum(eng)} c={c} />
+          </BranchHead>
+          <span className="org-stem" aria-hidden />
+          <TeamGrid boxes={eng} c={c} now={now} quiet={quiet} />
         </section>
       ) : null}
 
       {network.length ? (
         <section aria-labelledby="network">
-          <SectionHead id="network" title={n.department('Network')} count={network.reduce((a, b) => a + b.size, 0)} c={c} />
-          <div className={GRID}>
+          <BranchHead root={cno && <BranchRoot p={cno} c={c} accent={ACCENT.network} />}>
+            <SectionHead id="network" title={n.department('Network')} count={sum(network)} c={c} />
+          </BranchHead>
+          <span className="org-stem" aria-hidden />
+          <div className="org-bus grid gap-4">
             {network.map((b, i) => (
-              <BoxCard key={i} box={b} c={c} now={now} quiet={quiet} />
+              <BoxCard key={i} box={b} c={c} now={now} quiet={quiet} wide col="17rem" className="org-tick" />
             ))}
           </div>
         </section>
       ) : null}
-
-      {other.length ? (
-        <section aria-labelledby="departments">
-          <SectionHead id="departments" title={c.nav.departments} body={c.departmentsBody} c={c} />
-          <div className={GRID}>
-            {other.map((b, i) => (
-              <BoxCard key={i} box={b} c={c} now={now} quiet={quiet} />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
     </div>
   );
 }

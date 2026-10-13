@@ -1,8 +1,9 @@
 // Turns one photo into the site's avatar files: public/avatars/<slug>.webp (160 px) and <slug>@2x.webp (320 px),
 // square, centre-cropped, with ALL metadata dropped (EXIF, GPS, XMP, ICC). The orientation is applied to the pixels
 // first, so nothing depends on a tag that is then removed.
-// The slug is the agent's first name in lower case, the same name the page already shows. Adding an avatar later is
-// this one command plus a re-deploy: the page lists public/avatars at run time.
+// The slug is the agent's first name in lower case, the same name the page already shows; a partner's photo uses the
+// slug named in components/partners.ts ("partner-<name>"). Adding an avatar later is this one command plus a
+// re-deploy: the page checks public/avatars at run time.
 // Usage: node scripts/avatar.mjs <photo> <slug>
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -19,13 +19,15 @@ const band = (pct: number): Band => (pct > 85 ? 'high' : pct >= 70 ? 'warning' :
 const FILL: Record<Band, string> = { normal: 'bg-primary', warning: 'bg-warning', high: 'bg-danger' };
 
 function time(iso: string, c: Copy, withDay: boolean): string {
-  return new Date(iso).toLocaleString(c.locale, {
+  const s = new Date(iso).toLocaleString(c.locale, {
     timeZone: c.timeZone,
     ...(withDay ? { weekday: 'short' as const, day: 'numeric' as const } : {}),
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
   });
+  // The runtime joins the Persian parts with a Latin comma; Persian text uses «،».
+  return c.lang === 'fa' ? s.replace(/,/g, '،') : s;
 }
 
 function Meter({ label, pct, resetsAt, c, testid }: { label: string; pct: number | null; resetsAt: string | null; c: Copy; testid: string }) {
@@ -50,7 +52,7 @@ function Meter({ label, pct, resetsAt, c, testid }: { label: string; pct: number
 
 function AccountRow({ a, c }: { a: UsageAccount; c: Copy }) {
   return (
-    <li className="grid gap-2.5 py-3 first:pt-0 last:pb-0" data-testid="usage-account">
+    <li className="grid content-start gap-2.5" data-testid="usage-account">
       <span className="text-sm font-extrabold">{c.dash.accountLabel(a.label)}</span>
       <Meter label={c.dash.usageWeekly} pct={a.weeklyPct} resetsAt={a.weeklyResetsAt} c={c} testid="usage-weekly" />
       <Meter label={c.dash.usageFiveHour} pct={a.fiveHourPct} resetsAt={a.fiveHourResetsAt} c={c} testid="usage-five-hour" />
@@ -68,7 +70,7 @@ export function UsagePanel({ usage, now, c }: { usage: Usage | null; now: string
       <CardBody className="grid gap-3 py-4">
         {fresh && usage ? (
           <>
-            <ul className="m-0 grid list-none divide-y divide-border p-0">
+            <ul className="m-0 grid list-none gap-x-6 gap-y-4 p-0 sm:grid-cols-3">
               {usage.accounts.map((a, i) => (
                 <AccountRow key={i} a={a} c={c} />
               ))}
