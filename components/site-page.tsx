@@ -9,11 +9,24 @@ import { ThemeToggle } from './theme-toggle';
  * The public page, as a dashboard: a section menu (a sidebar from lg up, a wrapping row above the content
  * below that), a top bar, then the cards. A server component; the only client JavaScript is the theme
  * switch. The team data is fetched on the server from the public snapshot service; the browser never calls
- * that service. Without a snapshot the page still renders in full, with a short notice in place of the cards.
+ * that service.
+ *
+ * The page is cached (ISR). A render without a snapshot is NEVER kept as a good page:
+ *  - at build time there is no service to ask, so the build renders the short notice; that page is replaced
+ *    by the first regeneration that gets a snapshot;
+ *  - after that, a regeneration that cannot get one throws, so the last good page keeps being served and the
+ *    next request tries again. A valid but EMPTY team is a real answer and is rendered.
  */
+export class SnapshotUnavailableError extends Error {
+  constructor() {
+    super('SNAPSHOT_UNAVAILABLE: keeping the last good page');
+  }
+}
+
 export async function SitePage({ lang }: { lang: Lang }) {
   const c = COPY[lang];
   const result = await loadSnapshot();
+  if (result.state === 'unavailable' && process.env.NEXT_PHASE !== 'phase-production-build') throw new SnapshotUnavailableError();
   const model = result.state === 'ok' ? buildChart(result.snapshot) : null;
   const sections = sectionsOf(model);
   const label: Record<SectionKey, string> = c.nav;

@@ -53,7 +53,8 @@ type Attempt = { ok: true; body: unknown } | { ok: false; code: string; detail?:
 async function fetchOnce(url: URL): Promise<Attempt> {
   try {
     const res = await fetch(url, {
-      cache: 'no-store',
+      // No fetch-cache option on purpose: 'no-store' would make the whole page dynamic again. Caching is
+      // the page's own (ISR, 30 s) plus the memo above; the fetch itself is never stored.
       headers: { accept: 'application/json' },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });

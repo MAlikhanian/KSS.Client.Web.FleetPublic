@@ -4,11 +4,15 @@
 // `next start` and the mock on free local ports and stops both. Nothing is left
 // running.
 //
+// The pages are cached (ISR, 30 s), so a change of the mock's state shows only after
+// a regeneration: the tests wait for it. Each app starts from the BUILD's pages (the
+// notice), restored and marked stale, and the build's pages are put back at the end.
+//
 // Run: node --test tests/snapshot.test.mjs
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,8 +43,21 @@ function freePort() {
   });
 }
 
+// The build's cached pages, kept so each app starts from them and the build is left as it was found.
+const PAGE_FILES = ['index.html', 'index.rsc', 'index.meta', 'en.html', 'en.rsc', 'en.meta'].map((f) => path.join(ROOT, '.next', 'server', 'app', f));
+const BUILD_PAGES = existsSync(PAGE_FILES[0]) ? PAGE_FILES.map((f) => [f, readFileSync(f)]) : [];
+function restoreBuildPages() {
+  const old = new Date(Date.now() - 60 * 60_000); // an hour old: stale, so the first request regenerates
+  for (const [f, bytes] of BUILD_PAGES) {
+    writeFileSync(f, bytes);
+    utimesSync(f, old, old);
+  }
+}
+after(() => restoreBuildPages());
+
 async function startApp(env) {
   assert.ok(existsSync(path.join(ROOT, '.next', 'BUILD_ID')), 'run `next build` first');
+  restoreBuildPages();
   const port = await freePort();
   const logs = [];
   const child = spawn(process.execPath, [path.join(ROOT, 'node_modules/next/dist/bin/next'), 'start', '-p', String(port), '-H', '127.0.0.1'], {
@@ -67,6 +84,18 @@ async function startApp(env) {
 }
 
 const chartState = (html) => (html.match(/data-chart-state="([a-z]+)"/) ?? [])[1] ?? null;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Requests a page until `ok(html)` holds (a regeneration takes one stale hit plus a moment). */
+async function settle(base, route, ok, ms = 80_000) {
+  const end = Date.now() + ms;
+  let html = '';
+  while (Date.now() < end) {
+    html = await (await fetch(base + route)).text();
+    if (ok(html)) return html;
+    await sleep(1500);
+  }
+  throw new Error(`${route} did not settle within ${ms} ms (state ${chartState(html)})`);
+}
 const logged = async (logs, needle) => {
   for (let i = 0; i < 20; i++) {
     if (logs.join('').includes(needle)) return true;
@@ -170,17 +199,37 @@ describe('snapshot parser', () => {
   });
 });
 
-describe('served pages against the snapshot service, every state', () => {
+describe('served pages against the snapshot service, every state', { timeout: 600_000 }, () => {
   let mock;
   let app;
+  let firstState = {};
   before(async () => {
     mock = await startMock();
-    // No caching and no stale fallback, so each request shows the mock's current mode.
+    // No memo and no stale fallback in the data path, so each REGENERATION sees the mock's current mode.
     app = await startApp({
       FLEET_PUBLIC_API_URL: `http://127.0.0.1:${mock.port}`,
       FLEET_PUBLIC_CACHE_SECONDS: '0',
       FLEET_PUBLIC_STALE_SECONDS: '0',
     });
+    for (const route of ['/', '/en']) {
+      firstState[route] = chartState(await (await fetch(app.base + route)).text());
+      await settle(app.base, route, (h) => chartState(h) === 'ok');
+    }
+  });
+  /** Switches the mock and waits until both pages show it (at most one cache period plus a regeneration). */
+  const switchTo = async (mode, ok) => {
+    mock.state.mode = mode;
+    for (const route of ['/', '/en']) await settle(app.base, route, ok);
+  };
+
+  test('ISR: the first request gets the build page (the notice), and the first good regeneration replaces it', () => {
+    assert.deepEqual(firstState, { '/': 'unavailable', '/en': 'unavailable' });
+  });
+
+  test('the page is served from the cache, not rendered per request', async () => {
+    const res = await fetch(app.base + '/');
+    assert.match(res.headers.get('x-nextjs-cache') ?? '', /^(HIT|STALE)$/);
+    assert.doesNotMatch(res.headers.get('cache-control') ?? '', /no-store/);
   });
   after(async () => {
     await app?.stop();
@@ -246,7 +295,7 @@ describe('served pages against the snapshot service, every state', () => {
   });
 
   test('full fields on the page: public titles in the page language, last active, team graphs, the active-now tile', async () => {
-    mock.state.mode = 'full';
+    await switchTo('full', (h) => h.includes('data-testid="team-lead"'));
     for (const route of ['/', '/en']) {
       const { html } = await page(route);
       const lang = route === '/' ? 'fa' : 'en';
@@ -269,7 +318,7 @@ describe('served pages against the snapshot service, every state', () => {
       assert.ok(html.includes(lang === 'fa' ? 'کمتر از ۳' : 'fewer than 3'), route + ': a suppressed day reads as fewer than 3, never as none');
       assert.ok(html.includes(lang === 'fa' ? 'دست‌کم ' : 'at least '), route + ': a total over suppressed days is a lower bound');
     }
-    mock.state.mode = 'ok';
+    await switchTo('ok', (h) => chartState(h) === 'ok' && !h.includes('data-testid="team-lead"'));
   });
 
   test('box titles: a lead box is first name · role · count and NOTHING else; no project ever reaches a page', async () => {
@@ -290,7 +339,7 @@ describe('served pages against the snapshot service, every state', () => {
   });
 
   test('safe fallback on the page: no reporting lines for engineers means one Engineering box and no lead box', async () => {
-    mock.state.mode = 'noreports';
+    await switchTo('noreports', (h) => chartState(h) === 'ok' && leadTitles(h).length === 0);
     for (const route of ['/', '/en']) {
       const { status, html } = await page(route);
       assert.equal(status, 200);
@@ -344,23 +393,28 @@ describe('served pages against the snapshot service, every state', () => {
     ['limited', 'SNAPSHOT_HTTP_ERROR (status 429)', 'FLEET_RATE_LIMITED'],
     ['invalid', 'SNAPSHOT_INVALID (ACTIVITY_SHAPE_INVALID)', 'ACTIVITY_SHAPE_INVALID'],
   ]) {
-    test(`${mode}: a graceful notice, never an error page or code; the reason is logged on the server`, async () => {
+    test(`${mode}: a failed regeneration is never cached; the last good page stays, the reason is logged`, async () => {
+      await switchTo('ok', (h) => chartState(h) === 'ok');
       mock.state.mode = mode;
+      await sleep(31_000); // past the cache period, so the next request regenerates (and fails)
       for (const route of ['/', '/en']) {
+        await page(route); // the stale hit that starts the regeneration
+        await sleep(2000);
         const { status, html } = await page(route);
         assert.equal(status, 200);
-        assert.equal(chartState(html), 'unavailable');
+        assert.equal(chartState(html), 'ok', `${route}: the last good page is still served`);
         assert.ok(!html.includes(hidden), `${route} does not show the service's code`);
         assert.ok(!html.includes('SNAPSHOT_'), `${route} does not show our code`);
-        assert.ok(!html.includes('class="person'), `${route} renders no partial chart`);
       }
       assert.ok(await logged(app.logs, logNeedle), `server log carries: ${logNeedle}`);
+      assert.ok(await logged(app.logs, 'SNAPSHOT_UNAVAILABLE'), 'the regeneration was refused, not cached');
     });
   }
 
   test('empty team: its own calm notice, nothing logged as a failure', async () => {
-    mock.state.mode = 'empty';
+    await switchTo('ok', (h) => chartState(h) === 'ok');
     const before = app.logs.join('').split('snapshot unavailable').length;
+    await switchTo('empty', (h) => chartState(h) === 'empty');
     for (const route of ['/', '/en']) {
       const { status, html } = await page(route);
       assert.equal(status, 200);
@@ -370,24 +424,37 @@ describe('served pages against the snapshot service, every state', () => {
   });
 });
 
-describe('a failure after a good snapshot keeps showing the last good chart', () => {
+describe('the one-day stale copy under ISR, and the update time', { timeout: 300_000 }, () => {
   let mock;
   let app;
+  const G = '2026-10-01T08:30:00.000Z'; // a fixed snapshot time, far from any render time
   before(async () => {
     mock = await startMock();
+    mock.state.generatedAt = G;
+    // The DEFAULT stale window (one day): a failed fetch falls back to the in-process copy.
     app = await startApp({ FLEET_PUBLIC_API_URL: `http://127.0.0.1:${mock.port}`, FLEET_PUBLIC_CACHE_SECONDS: '0' });
+    await settle(app.base, '/en', (h) => chartState(h) === 'ok');
   });
   after(async () => {
     await app?.stop();
     mock?.server.close();
   });
+  const shownTime = (html) => (html.match(/data-testid="chart-updated"><time dateTime="([^"]+)"/) ?? [])[1];
 
-  test('ok, then the service fails: the chart stays, the failure is logged', async () => {
-    mock.state.mode = 'ok';
-    assert.equal(chartState(await (await fetch(`${app.base}/`)).text()), 'ok');
+  test('the "updated" line carries the SNAPSHOT\'s time, not the render time', async () => {
+    assert.equal(shownTime(await (await fetch(app.base + '/en')).text()), G);
+  });
+
+  test('the service fails: the regeneration renders from the one-day copy, the chart and its time stay', async () => {
     mock.state.mode = 'error';
-    assert.equal(chartState(await (await fetch(`${app.base}/`)).text()), 'ok');
-    assert.ok(await logged(app.logs, 'SNAPSHOT_HTTP_ERROR (status 500)'));
+    await sleep(31_000);
+    await fetch(app.base + '/en'); // stale hit: regenerates from the in-process copy
+    await sleep(2500);
+    const html = await (await fetch(app.base + '/en')).text();
+    assert.equal(chartState(html), 'ok');
+    assert.equal(shownTime(html), G, 'still the snapshot\'s own time');
+    assert.ok(await logged(app.logs, 'SNAPSHOT_HTTP_ERROR (status 500)'), 'the failed fetch was logged');
+    assert.ok(!app.logs.join('').includes('SNAPSHOT_UNAVAILABLE'), 'nothing refused: the copy was good');
   });
 });
 
@@ -400,12 +467,17 @@ describe('not configured (a build or a local run with no service URL)', () => {
     await app?.stop();
   });
 
-  test('the page still renders in full, with the graceful notice', async () => {
-    const res = await fetch(`${app.base}/`);
-    const html = await res.text();
-    assert.equal(res.status, 200);
-    assert.equal(chartState(html), 'unavailable');
+  test('the build page (the notice) is served, every regeneration is refused, the next request tries again', async () => {
+    for (let i = 0; i < 3; i++) {
+      const res = await fetch(`${app.base}/`);
+      const html = await res.text();
+      assert.equal(res.status, 200);
+      assert.equal(chartState(html), 'unavailable');
+      await sleep(1500);
+    }
     assert.ok(await logged(app.logs, 'SNAPSHOT_NOT_CONFIGURED'));
+    assert.ok(await logged(app.logs, 'SNAPSHOT_UNAVAILABLE'), 'the regeneration threw: the notice was not cached as a good page');
+    assert.equal(readFileSync(PAGE_FILES[0], 'utf8'), BUILD_PAGES[0][1].toString('utf8'), 'the cached page on disk is still the build page');
   });
 });
 

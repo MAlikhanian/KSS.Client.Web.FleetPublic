@@ -121,7 +121,8 @@ export function makeSnapshot(mode = 'ok') {
 
 /** Starts the mock. `state.mode` can be changed while it runs; `state.requests` records what arrived. */
 export function startMock(port = 0) {
-  const state = { mode: 'ok', requests: [] };
+  // generatedAt: when set, every snapshot carries this fixed time (tests tell it from a render time).
+  const state = { mode: 'ok', requests: [], generatedAt: null };
   const server = http.createServer((req, res) => {
     state.requests.push({ method: req.method, url: req.url, headers: { ...req.headers } });
     if (req.url !== '/api/public/snapshot') {
@@ -136,7 +137,9 @@ export function startMock(port = 0) {
       res.writeHead(429, { 'content-type': 'application/json' }).end('{"code":"FLEET_RATE_LIMITED"}');
       return;
     }
-    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(makeSnapshot(state.mode)));
+    const body = makeSnapshot(state.mode);
+    if (state.generatedAt) body.generatedAt = state.generatedAt;
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(body));
   });
   return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve({ server, state, port: server.address().port })));
 }

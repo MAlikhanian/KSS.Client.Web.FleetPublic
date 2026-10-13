@@ -1,9 +1,9 @@
 import { SitePage } from '@/components/site-page';
 
-// Rendered per request: the team chart comes from the public snapshot service
-// (cached in memory for a short time; see components/snapshot-server.ts), and a
-// build-time render would bake in whatever the build could not reach.
-export const dynamic = 'force-dynamic';
+// Cached and regenerated in the background at most every 30 seconds (ISR): a visitor gets a ready page, and
+// only a regeneration talks to the public snapshot service. A regeneration that cannot get a snapshot fails
+// on purpose, so the last good page keeps being served (see components/site-page.tsx).
+export const revalidate = 30;
 
 export default function EnglishHome() {
   return <SitePage lang="en" />;
