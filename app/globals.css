@@ -55,6 +55,8 @@
   --dept-engineering: #2563eb;
   --dept-network: #0d9488;
   --dept-support: #db2777;
+  /* Every other department, grouped: a neutral slate. */
+  --dept-other: #64748b;
 }
 
 /* Dark tokens: the system preference when no choice was made, or an explicit choice. */
@@ -78,6 +80,7 @@
     --dept-engineering: #60a5fa;
     --dept-network: #2dd4bf;
     --dept-support: #f472b6;
+    --dept-other: #94a3b8;
   }
 }
 :root[data-theme='dark'] {
@@ -99,6 +102,7 @@
   --dept-engineering: #60a5fa;
   --dept-network: #2dd4bf;
   --dept-support: #f472b6;
+  --dept-other: #94a3b8;
 }
 
 /* The tokens as Tailwind theme values: bg-card, text-muted-foreground, border-border, rounded-card, ... */

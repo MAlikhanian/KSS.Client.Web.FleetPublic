@@ -5,11 +5,9 @@ import { Avatar, AvatarGroup } from './ui/avatar';
 import { Badge } from './ui/badge';
 import { Card, CardBody, CardHeader } from './ui/card';
 import { Sparkline } from './ui/sparkline';
-import { Stat } from './ui/stat';
 
 /**
- * The public team dashboard: stat tiles, the leadership card, one card per engineering team, one per other
- * department, and the activity cards. Per person: an initial, first name, role and department, who she
+ * The live team: the leadership card, one card per engineering team, one per other department. Per person: an initial, first name, role and department, who she
  * reports to, and (when the service sends it) the time of her last activity. No identifier of any kind, no
  * per-person colour, no customer: a team is titled by its PUBLIC title from the service, or by its lead.
  */
@@ -194,58 +192,16 @@ function Leadership({ model, c, now, quiet }: { model: ChartModel; c: Copy; now:
   );
 }
 
-function Activity({ model, c }: { model: ChartModel; c: Copy }) {
-  const n = names(c);
-  const num = (v: number) => v.toLocaleString(c.locale);
-  const card = (key: string, title: string, d: { sent: number; received: number; daily: number[] }, other: boolean) => (
-    <li key={key} className={other ? 'activity-card activity-other min-w-0 rounded-card border border-dashed border-border p-4' : 'activity-card min-w-0 rounded-card border border-border bg-card p-4'}>
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <h3 className="m-0 min-w-0 text-base font-extrabold [overflow-wrap:anywhere]">{title}</h3>
-        {other ? <span className="text-xs text-muted-foreground">{c.otherBody}</span> : <Sparkline values={d.daily} label={c.sparkLabel(d.daily.map(num).join('، '))} />}
-      </div>
-      <dl className="m-0 mt-3 grid grid-cols-2 gap-3">
-        {[
-          [c.sent, d.sent],
-          [c.received, d.received],
-        ].map(([label, v]) => (
-          <div key={String(label)} className="rounded-control bg-muted px-3 py-2">
-            <dt className="text-xs text-muted-foreground">{label}</dt>
-            <dd className="m-0 text-xl leading-tight font-extrabold tabular-nums">{num(v as number)}</dd>
-          </div>
-        ))}
-      </dl>
-    </li>
-  );
-  return (
-    <section aria-labelledby="activity">
-      <SectionHead id="activity" title={c.activityTitle} body={c.activityBody} c={c} />
-      <ul className={`m-0 list-none p-0 ${GRID.replace('19rem', '15rem')}`}>
-        {model.activity.map((d) => card(d.department ?? '', d.department ? n.department(d.department) : '', d, false))}
-        {model.other ? card('other', c.other, model.other, true) : null}
-      </ul>
-    </section>
-  );
-}
-
 export function TeamChart({ model, c }: { model: ChartModel; c: Copy }) {
-  const num = (v: number) => v.toLocaleString(c.locale);
   const now = model.generatedAt;
   const eng = model.boxes.filter((b) => !isNetwork(b) && (b.kind === 'lead' || norm(b.department) === 'engineering'));
   const network = model.boxes.filter(isNetwork);
   const other = model.boxes.filter((b) => !eng.includes(b) && !network.includes(b));
-  const teams = model.boxes.filter((b) => b.kind === 'lead').length;
   const n = names(c);
   // Quiet bands only when the service sends last-activity times at all (an older service sends none).
   const quiet = model.activeNow !== null;
   return (
     <div className="grid gap-8" data-chart-state="ok">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-        <Stat label={c.statAgents} value={num(model.total)} />
-        <Stat label={c.statTeams} value={num(teams)} />
-        <Stat label={c.statMessages} value={num(model.totalSent)} />
-        {model.activeNow !== null ? <Stat label={c.statActive} value={num(model.activeNow)} /> : null}
-      </div>
-
       {model.strip.length ? <Leadership model={model} c={c} now={now} quiet={quiet} /> : null}
 
       {eng.length ? (
@@ -281,13 +237,36 @@ export function TeamChart({ model, c }: { model: ChartModel; c: Copy }) {
         </section>
       ) : null}
 
-      {model.activity.length || model.other ? <Activity model={model} c={c} /> : null}
     </div>
   );
 }
 
+/**
+ * The build-time page reloads itself so a visitor who reaches a freshly started server gets the regenerated page
+ * (with data) a moment later. At most three tries per tab session; after that it says the chart is coming back.
+ */
+const PENDING_RELOAD = `try{var k='fleet-wait',n=+(sessionStorage.getItem(k)||0);if(n<3){sessionStorage.setItem(k,String(n+1));setTimeout(function(){location.reload()},2500)}else{sessionStorage.removeItem(k);document.getElementById('wait-loading').hidden=true;document.getElementById('wait-later').hidden=false}}catch(e){}`;
+
 /** Shown when there is no chart to show. Never an error code, never a technical reason. */
-export function ChartNotice({ c, state }: { c: Copy; state: 'empty' | 'unavailable' }) {
+export function ChartNotice({ c, state }: { c: Copy; state: 'empty' | 'unavailable' | 'pending' }) {
+  if (state === 'pending') {
+    return (
+      <Card className="p-5" data-chart-state="pending">
+        <div id="wait-loading">
+          <h2 className="m-0 flex items-center gap-2 text-xl font-extrabold">
+            <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-primary motion-reduce:animate-none" aria-hidden />
+            {c.pendingTitle}
+          </h2>
+          <p className="m-0 mt-2 text-muted-foreground">{c.pendingBody}</p>
+        </div>
+        <div id="wait-later" hidden>
+          <h2 className="m-0 text-xl font-extrabold">{c.unavailableTitle}</h2>
+          <p className="m-0 mt-2 text-muted-foreground">{c.unavailableBody}</p>
+        </div>
+        <script dangerouslySetInnerHTML={{ __html: PENDING_RELOAD }} />
+      </Card>
+    );
+  }
   return (
     <Card className="p-5" data-chart-state={state}>
       <h2 className="m-0 text-xl font-extrabold">{state === 'empty' ? c.emptyTitle : c.unavailableTitle}</h2>

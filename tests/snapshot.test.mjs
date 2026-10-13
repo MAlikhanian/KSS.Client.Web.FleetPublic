@@ -175,6 +175,25 @@ describe('snapshot parser', () => {
     old.agents[0].activity7d = [0, 0, 5, 0, 3, 0, 9];
     assert.equal(parseSnapshot(old).ok, true);
   });
+  test('the service shape of 13 Oct: rooms, usage (null or set), colour and activeByHour all parse; a bad activeByHour is ignored, never fatal', () => {
+    const body = makeSnapshot('full');
+    body.agents[0].rooms = ['Room A', 'Room A'];
+    body.agents[1].rooms = null;
+    body.agents[0].color = '#123456';
+    body.usage = null;
+    body.activeByHour = Array.from({ length: 24 }, (_, h) => (h % 4 ? 0 : 5));
+    let r = parseSnapshot(body);
+    assert.equal(r.ok, true, 'usage null');
+    assert.equal(r.snapshot.activeByHour.length, 24);
+    body.usage = { asOf: '2026-10-13T16:55:00Z', accounts: [{ label: 'Account 1', weeklyPct: 40, weeklyResetsAt: null, fiveHourPct: null, fiveHourResetsAt: null, readAt: '2026-10-13T16:55:00Z' }] };
+    assert.equal(parseSnapshot(body).ok, true, 'usage set');
+    for (const bad of [[1, 2, 3], 'x', Array(24).fill(-1), Array(24).fill(1.5)]) {
+      body.activeByHour = bad;
+      r = parseSnapshot(body);
+      assert.equal(r.ok, true, 'a malformed activeByHour does not refuse the snapshot');
+      assert.equal(r.snapshot.activeByHour, null, 'it is dropped');
+    }
+  });
   test('generatedAt: optional; missing means null, a valid time is kept as ISO UTC', () => {
     const body = makeSnapshot('ok');
     delete body.generatedAt;
@@ -247,8 +266,8 @@ describe('served pages against the snapshot service, every state', { timeout: 60
     for (const route of ['/', '/en']) await settle(app.base, route, ok);
   };
 
-  test('ISR: the first request gets the build page (the notice), and the first good regeneration replaces it', () => {
-    assert.deepEqual(firstState, { '/': 'unavailable', '/en': 'unavailable' });
+  test('ISR: the first request gets the build page ("loading", never "can\'t be shown"), and the first good regeneration replaces it', () => {
+    assert.deepEqual(firstState, { '/': 'pending', '/en': 'pending' });
   });
 
   test('the page is served from the cache, not rendered per request', async () => {
@@ -274,7 +293,19 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       assert.equal(chartState(html), 'ok');
       for (const a of [SAMPLE.agents[0], SAMPLE.agents[20], SAMPLE.agents[102]]) assert.ok(html.includes(a.firstName), `${route} shows ${a.firstName}`);
       assert.ok(html.includes(route === '/' ? 'پشتیبانی مشتریان' : 'Customer support'), `${route} names departments in its language`);
-      assert.ok(html.includes('class="activity-card'), `${route} shows the activity cards`);
+      assert.ok(html.includes('data-testid="department-table"'), `${route} shows the departments table`);
+      // Every figure in the chart and the table is a sum of SHOWN buckets: the chart's week (sent) equals the table's sent total.
+      const snap = makeSnapshot('ok');
+      const sent = snap.activity.buckets.filter((b) => b.direction === 'sent').reduce((a, b) => a + b.count, 0);
+      const sentText = sent.toLocaleString(route === '/' ? 'fa-IR' : 'en-GB');
+      const foot = (html.match(/<tfoot[\s\S]*?<\/tfoot>/) ?? [''])[0];
+      assert.ok(stripTags(foot).includes(sentText), `${route}: the table total is the sum of the shown sent buckets (${sentText})`);
+      const totals = [...html.matchAll(/data-total="(\d+)"/g)].map((m) => Number(m[1]));
+      assert.equal(totals.length, 7, `${route}: seven day columns`);
+      assert.equal(totals.reduce((a, b) => a + b, 0), sent, `${route}: the chart's days add up to the shown sent buckets`);
+      assert.ok(html.includes('data-testid="accounts"') && html.includes(route === '/' ? 'خوانش تازه‌ای در دسترس نیست' : 'No recent reading'), `${route}: account usage reads "no recent reading"`);
+      assert.ok(!html.includes('data-testid="hours-chart"'), `${route}: no hourly chart when the service sends no hours`);
+      assert.ok(html.includes('data-testid="team-mix"'), `${route}: the team mix`);
     }
   });
 
@@ -306,14 +337,18 @@ describe('served pages against the snapshot service, every state', { timeout: 60
     mock.state.mode = 'ok';
     for (const route of ['/', '/en']) {
       const { html } = await page(route);
-      const menu = html.slice(html.indexOf('data-testid="section-menu"'), html.indexOf('</nav>'));
-      const links = [...menu.matchAll(/href="#([a-z]+)"/g)].map((m) => m[1]);
-      assert.deepEqual(links, ['what', 'how', 'team'], route + ': the top bar lists the three story sections');
+      const menuOf = (testid) => {
+        const from = html.indexOf(`data-testid="${testid}"`);
+        return [...html.slice(from, html.indexOf('</nav>', from)).matchAll(/href="#([a-z]+)"/g)].map((m) => m[1]);
+      };
+      const links = menuOf('side-menu');
+      assert.deepEqual(links, ['overview', 'usage', 'what', 'activity', 'teams', 'how'], route + ': the sidebar lists the dashboard sections');
+      assert.deepEqual(menuOf('section-menu'), links, route + ': the phone menu lists the same');
       for (const id of links) assert.match(html, new RegExp('id="' + id + '"'), route + ': #' + id + ' exists');
-      assert.ok(!html.includes('data-testid="sidebar"'), route + ': no sidebar any more');
+      assert.ok(html.includes('data-testid="sidebar"'), route + ': the dark sidebar');
       assert.ok(html.includes('data-testid="theme-toggle"'), route + ': the theme switch is there');
       assert.ok(html.includes("localStorage.getItem('fleet-theme')"), route + ': a stored theme is applied before paint');
-      assert.equal((html.match(/data-testid="stat"/g) ?? []).length, 3, route + ': three stat tiles without the active-now figure');
+      assert.equal((html.match(/data-testid="stat"/g) ?? []).length, 4, route + ': four stat cards without the active-now figure');
       assert.ok(!html.includes('data-testid="last-active"'), route + ': no last-active text when the service sends none');
       assert.ok(!html.includes('data-testid="team-activity"'), route + ': no team graph when the service sends none');
     }
@@ -343,7 +378,12 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       assert.ok(html.includes(lang === 'fa' ? 'آخرین فعالیت در ۱۵ دقیقهٔ گذشته' : 'Last activity in the past 15 minutes'), route + ': the tile title says last activity');
       assert.doesNotMatch(html, lang === 'fa' ? />فعال</ : />(Active|Online|online)</, route + ': no online or active pill');
       assert.ok((html.match(/data-testid="team-activity"/g) ?? []).length >= 17, route + ': team graphs');
-      assert.equal((html.match(/data-testid="stat"/g) ?? []).length, 4, route + ': the active-now tile');
+      assert.equal((html.match(/data-testid="stat"/g) ?? []).length, 5, route + ': the active-now card');
+      assert.ok(html.includes('data-testid="hours-chart"'), route + ': the hourly chart when the service sends hours');
+      const hours = (html.match(/data-hour="/g) ?? []).length;
+      assert.equal(hours, 24, route + ': 24 hours');
+      const quiet = makeSnapshot('full').activeByHour.filter((v) => v === null || v === 0).length;
+      assert.equal((html.match(/data-suppressed=""/g) ?? []).length, quiet, route + ': every suppressed hour drawn as suppressed');
       assert.ok(!html.includes(PROJECT_CANARY), route + ': no internal project name');
       assert.ok(html.includes(lang === 'fa' ? 'کمتر از ۳' : 'fewer than 3'), route + ': a suppressed day reads as fewer than 3, never as none');
       assert.ok(html.includes(lang === 'fa' ? 'دست‌کم ' : 'at least '), route + ': a total over suppressed days is a lower bound');
@@ -369,8 +409,10 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       // Today's shape: support messages and teams have data; one generic network role and no times have none.
       assert.equal(numbers, 2, route + ': only the numbers this snapshot can back');
       assert.equal((html.match(/<li[^>]*class="grid content-start/g) ?? []).length, 5, route + ': five steps');
-      assert.ok(!html.includes('data-testid="contact"'), route + ': no contact line without the deployment\'s values');
-      assert.match(html, /href="https:\/\/kss\.ir"[^>]*>[^<]*(Contact us|تماس با ما)/, route + ': "Contact us" falls back to kss.ir');
+      // A showcase, not a contact page: no contact line, no mailto: or tel:, no "Contact us"; "Visit kss.ir" stays.
+      assert.ok(!html.includes('data-testid="contact"') && !/mailto:|tel:/.test(html), route + ': no contact details');
+      assert.ok(!/Contact us|تماس با ما/.test(html), route + ': no "Contact us"');
+      assert.match(html, /href="https:\/\/kss\.ir"[^>]*>[^<]*(Visit kss\.ir|مشاهدهٔ kss\.ir)/, route + ': "Visit kss.ir" stays');
     }
   });
 
@@ -442,9 +484,9 @@ describe('served pages against the snapshot service, every state', { timeout: 60
   });
 
   for (const [mode, logNeedle, hidden] of [
-    ['error', 'SNAPSHOT_HTTP_ERROR (status 500)', 'FLEET_INTERNAL_ERROR'],
-    ['limited', 'SNAPSHOT_HTTP_ERROR (status 429)', 'FLEET_RATE_LIMITED'],
-    ['invalid', 'SNAPSHOT_INVALID (ACTIVITY_SHAPE_INVALID)', 'ACTIVITY_SHAPE_INVALID'],
+    ['error', 'SNAPSHOT_HTTP_ERROR (status 500, the last good copy is too old', 'FLEET_INTERNAL_ERROR'],
+    ['limited', 'SNAPSHOT_HTTP_ERROR (status 429, the last good copy is too old', 'FLEET_RATE_LIMITED'],
+    ['invalid', 'SNAPSHOT_INVALID (ACTIVITY_SHAPE_INVALID, the last good copy is too old', 'ACTIVITY_SHAPE_INVALID'],
   ]) {
     test(`${mode}: a failed regeneration is never cached; the last good page stays, the reason is logged`, async () => {
       await switchTo('ok', (h) => chartState(h) === 'ok');
@@ -460,7 +502,7 @@ describe('served pages against the snapshot service, every state', { timeout: 60
         assert.ok(!html.includes('SNAPSHOT_'), `${route} does not show our code`);
       }
       assert.ok(await logged(app.logs, logNeedle), `server log carries: ${logNeedle}`);
-      assert.ok(await logged(app.logs, 'SNAPSHOT_UNAVAILABLE'), 'the regeneration was refused, not cached');
+      assert.ok(await logged(app.logs, 'regeneration refused: SNAPSHOT_UNAVAILABLE'), 'the regeneration was refused, not cached, in one log line');
     });
   }
 
@@ -506,50 +548,27 @@ describe('the one-day stale copy under ISR, and the update time', { timeout: 300
     const html = await (await fetch(app.base + '/en')).text();
     assert.equal(chartState(html), 'ok');
     assert.equal(shownTime(html), G, 'still the snapshot\'s own time');
-    assert.ok(await logged(app.logs, 'SNAPSHOT_HTTP_ERROR (status 500)'), 'the failed fetch was logged');
+    assert.ok(await logged(app.logs, 'SNAPSHOT_HTTP_ERROR (status 500, showing the last good copy'), 'the failed fetch was logged, with what it fell back to');
     assert.ok(!app.logs.join('').includes('SNAPSHOT_UNAVAILABLE'), 'nothing refused: the copy was good');
   });
 });
 
-// Invented values only: the real ones live in the deployment's ConfigMap, never in the source.
-const FAKE_CONTACT = { FLEET_PUBLIC_CONTACT_EMAIL: 'desk@example.test', FLEET_PUBLIC_CONTACT_PHONE: '000 000 0000', FLEET_PUBLIC_CONTACT_TEL: '+10000000000' };
-
-describe('contact details, read from the deployment at render time', () => {
-  let read;
-  const withEnv = (env, fn) => {
-    const keys = Object.keys(FAKE_CONTACT);
-    const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
-    for (const k of keys) delete process.env[k];
-    Object.assign(process.env, env);
-    try {
-      return fn();
-    } finally {
-      for (const k of keys) if (saved[k] === undefined) delete process.env[k];
-      else process.env[k] = saved[k];
-    }
-  };
-  before(async () => {
-    read = (await import('../components/contact.ts')).readContact;
-  });
-
-  test('unset: nothing; set: all three; a malformed value or a phone without its tel: form is dropped', () => {
-    assert.deepEqual(withEnv({}, read), { email: null, phone: null, tel: null });
-    assert.deepEqual(withEnv(FAKE_CONTACT, read), { email: 'desk@example.test', phone: '000 000 0000', tel: '+10000000000' });
-    assert.equal(withEnv({ FLEET_PUBLIC_CONTACT_EMAIL: '"><script>@x.io' }, read).email, null);
-    assert.deepEqual(withEnv({ FLEET_PUBLIC_CONTACT_PHONE: '000 000 0000' }, read), { email: null, phone: null, tel: null });
-  });
-
-  test('the served page carries them as mailto: and tel: links when the deployment sets them', async () => {
+describe('cold start: a freshly started server with a healthy service', { timeout: 120_000 }, () => {
+  test('the first visitor gets "loading" with a self-reload, never "can\'t be shown"; data follows; the start is logged', async () => {
     const m = await startMock();
-    const app = await startApp({ FLEET_PUBLIC_API_URL: `http://127.0.0.1:${m.port}`, ...FAKE_CONTACT });
+    const app = await startApp({ FLEET_PUBLIC_API_URL: `http://127.0.0.1:${m.port}` });
     try {
       for (const route of ['/', '/en']) {
-        const html = await settle(app.base, route, (h) => chartState(h) === 'ok');
-        const line = (html.match(/data-testid="contact">([\s\S]*?)<\/p>/) ?? [])[1] ?? '';
-        assert.ok(line.includes('href="mailto:desk@example.test"'), route + ': the email link');
-        assert.ok(line.includes('href="tel:+10000000000"') && line.includes('000 000 0000'), route + ': the phone, with its tel: link');
-        assert.match(html, /href="mailto:desk@example\.test"[^>]*>[^<]*(Contact us|تماس با ما)/, route + ': "Contact us" writes to the address');
+        const first = await (await fetch(app.base + route)).text();
+        assert.equal(chartState(first), 'pending', route + ': the build page is the loading state');
+        assert.ok(first.includes(route === '/' ? 'در حال بارگذاری تازه‌ترین داده‌های تیم' : 'Loading the latest team data'), route + ': it says it is loading');
+        assert.ok(first.includes('location.reload()'), route + ': it reloads itself');
+        // The "back shortly" text is only the fallback after three tries, hidden at first.
+        assert.match(first, /<div id="wait-later" hidden="">/, route + ': the fallback text starts hidden');
+        const html = await settle(app.base, route, (h) => chartState(h) === 'ok', 20_000);
+        assert.ok(!html.includes('location.reload()'), route + ': the data page does not reload');
       }
+      assert.ok(await logged(app.logs, 'snapshot ok: first live data since start'), 'a cold start leaves one line in the log');
     } finally {
       await app.stop();
       m.server.close();
@@ -566,12 +585,12 @@ describe('not configured (a build or a local run with no service URL)', () => {
     await app?.stop();
   });
 
-  test('the build page (the notice) is served, every regeneration is refused, the next request tries again', async () => {
+  test('the build page (loading, with the fallback text after three tries) is served, every regeneration is refused, the next request tries again', async () => {
     for (let i = 0; i < 3; i++) {
       const res = await fetch(`${app.base}/`);
       const html = await res.text();
       assert.equal(res.status, 200);
-      assert.equal(chartState(html), 'unavailable');
+      assert.equal(chartState(html), 'pending');
       await sleep(1500);
     }
     assert.ok(await logged(app.logs, 'SNAPSHOT_NOT_CONFIGURED'));

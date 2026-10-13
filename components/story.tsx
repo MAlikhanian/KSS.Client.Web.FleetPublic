@@ -1,10 +1,9 @@
-import type { Contact } from './contact';
 import { STORY_CLAIMS, type Copy, type StoryCard } from './copy';
 import type { ChartModel } from './snapshot';
 import { Card } from './ui/card';
 
 /**
- * The top of the public page: what this is (the hero), what the agents do (four cards, each with one live number
+ * The story parts of the dashboard: what this is (the hero), what the agents do (four cards, each with one live number
  * from the snapshot), and how a request is handled (five steps). Every number comes from data the public service
  * already sends, and is left out when that data is absent; nothing is hard-coded.
  */
@@ -50,11 +49,11 @@ const DEPT_VAR: Record<StoryCard['key'], string> = {
   leadership: 'var(--dept-executive)',
 };
 
-export function Hero({ c, n, contact, updated, generatedAt }: { c: Copy; n: StoryNumbers; contact: Contact; updated: string | null; generatedAt: string | null }) {
+export function Hero({ c, n }: { c: Copy; n: StoryNumbers }) {
   const s = c.story;
   const count = n.total === null ? null : n.total.toLocaleString(c.locale);
   return (
-    <section aria-labelledby="overview" className="grid gap-3 rounded-card border border-border bg-gradient-to-br from-card to-muted p-5 lg:p-7" data-testid="hero">
+    <section aria-labelledby="overview" className="grid content-center gap-3 rounded-card border border-border bg-gradient-to-br from-card to-muted p-5 lg:p-7" data-testid="hero">
       <h1 id="overview" className="m-0 max-w-[32ch] text-xl leading-snug font-extrabold lg:text-[2rem]">
         {s.headline(count)}
       </h1>
@@ -66,30 +65,7 @@ export function Hero({ c, n, contact, updated, generatedAt }: { c: Copy; n: Stor
         <a className="rounded-control bg-primary px-4 py-2 font-semibold text-primary-foreground no-underline" href="https://kss.ir">
           {s.ctaSite}
         </a>
-        <a className="rounded-control border border-border px-4 py-2 font-semibold text-foreground no-underline hover:bg-muted" href={contact.email ? `mailto:${contact.email}` : 'https://kss.ir'}>
-          {s.ctaContact}
-        </a>
       </div>
-      {contact.email || contact.phone ? (
-        <p className="m-0 flex flex-wrap gap-x-3 text-sm font-semibold" data-testid="contact">
-          {contact.email ? (
-            <a className="text-foreground no-underline" href={`mailto:${contact.email}`} dir="ltr">
-              {contact.email}
-            </a>
-          ) : null}
-          {contact.phone && contact.tel ? (
-            <a className="text-foreground no-underline" href={`tel:${contact.tel}`} dir="ltr">
-              {contact.phone}
-            </a>
-          ) : null}
-        </p>
-      ) : null}
-      {updated && generatedAt ? (
-        <p className="updated m-0 flex items-center gap-2 text-xs text-muted-foreground" data-testid="chart-updated">
-          <span className="size-2 rounded-full bg-success" aria-hidden />
-          <time dateTime={generatedAt}>{s.live(updated)}</time>
-        </p>
-      ) : null}
     </section>
   );
 }

@@ -65,12 +65,46 @@ export interface Copy {
   unavailableBody: string;
   emptyTitle: string;
   emptyBody: string;
+  /** The build-time page (no service exists at build): replaced within seconds by the first regeneration. */
+  pendingTitle: string;
+  pendingBody: string;
   locale: string;
   artLabel: string;
   footerCopyright: string;
   footerCookies: string;
   /** The story at the top of the page: what this is, what the agents do, how a request is handled. */
   story: Story;
+  /** The dashboard: sidebar, top bar, stat cards and the usage graphs. */
+  dash: Dash;
+}
+
+export interface Dash {
+  pageTitle: string;
+  nav: { label: string; overview: string; usage: string; what: string; teams: string; activity: string; how: string };
+  /** Opens the phone menu (the sidebar's links). */
+  menu: string;
+  statDepartments: string;
+  statMessagesHint: string;
+  statTeamsHint: (products: string | null) => string;
+  usageTitle: string;
+  messagesTitle: string;
+  messagesBody: string;
+  /** The first column of the chart's data table. */
+  department: string;
+  hoursTitle: string;
+  hoursBody: string;
+  hoursLabel: (values: string) => string;
+  accountsTitle: string;
+  accountsNone: string;
+  accountsBody: string;
+  mixTitle: string;
+  /** The grouped departments in a chart or the mix: everything but the four named groups. */
+  otherDepartments: string;
+  /** The chart's day labels: short weekday and day of month, for a UTC date. */
+  dayLabel: (isoDay: string) => string;
+  colAgents: string;
+  colTrend: string;
+  totalRow: string;
 }
 
 export interface StoryCard {
@@ -87,9 +121,7 @@ export interface Story {
   subAnswers: string;
   subDeletion: string;
   ctaSite: string;
-  ctaContact: string;
   live: (time: string) => string;
-  nav: { what: string; how: string; team: string; label: string };
   whatTitle: string;
   cards: StoryCard[];
   /** Live numbers on the cards. */
@@ -175,6 +207,8 @@ export const COPY: Record<Lang, Copy> = {
     unavailableBody: 'نمایش نمودار تیم در این لحظه ممکن نیست. لطفاً چند دقیقه دیگر دوباره سر بزنید.',
     emptyTitle: 'نمودار تیم به‌زودی اینجا نمایش داده می‌شود',
     emptyBody: 'هنوز عاملی برای نمایش وجود ندارد.',
+    pendingTitle: 'در حال بارگذاری تازه‌ترین داده‌های تیم',
+    pendingBody: 'داده‌های زنده در راه است؛ این صفحه تا چند لحظهٔ دیگر خودش به‌روز می‌شود.',
     locale: 'fa-IR',
     artLabel: 'تصویری از یک نمودار سازمانی',
     footerCopyright: `© ۲۰۲۶ ${LEGAL_NAME_FA}`,
@@ -187,9 +221,7 @@ export const COPY: Record<Lang, Copy> = {
       subAnswers: 'پاسخ سریع و صادقانه به فارسی یا انگلیسی، با متن یا صدا.',
       subDeletion: 'و حذف داده همیشه به تأیید یک شخص نیاز دارد.',
       ctaSite: 'مشاهدهٔ kss.ir',
-      ctaContact: 'تماس با ما',
       live: (time) => `داده‌های زندهٔ تیم، به‌روزرسانی: ${time} به وقت تهران`,
-      nav: { what: 'چه می‌کنند', how: 'روند کار', team: 'تیم زنده', label: 'بخش‌ها' },
       whatTitle: 'عامل‌ها چه می‌کنند',
       cards: [
         { key: 'support', title: 'پشتیبانی مشتریان', body: STORY_CLAIMS.fa.support },
@@ -215,6 +247,30 @@ export const COPY: Record<Lang, Copy> = {
       standby: 'آماده به کار',
       headsOfDepartment: 'مدیران بخش‌ها',
       executiveAssistants: 'دستیاران اجرایی',
+    },
+    dash: {
+      pageTitle: 'داشبورد تیم',
+      nav: { label: 'بخش‌ها', overview: 'نمای کلی', usage: 'مصرف و فعالیت', what: 'چه می‌کنند', teams: 'تیم‌ها', activity: 'واحدها', how: 'روند کار' },
+      menu: 'بخش‌ها',
+      statDepartments: 'واحدها',
+      statMessagesHint: 'پیام‌های فرستاده‌شده، روزبه‌روز',
+      statTeamsHint: (products) => (products ? `${products} محصول فعال` : 'هر تیم با یک سرپرست'),
+      usageTitle: 'مصرف و فعالیت',
+      messagesTitle: 'پیام‌ها در هر روز، به تفکیک واحد',
+      messagesBody: 'پیام‌هایی که عامل‌ها در هفت روز گذشته فرستاده‌اند (روزها به وقت UTC). تعدادهای کوچک در «واحدهای دیگر» آمده‌اند.',
+      department: 'واحد',
+      hoursTitle: 'عامل‌های فعال در هر ساعت، امروز',
+      hoursBody: 'ساعت‌ها به وقت UTC. ساعتی با کمتر از ۳ عامل، کوتاه و خاکستری نشان داده می‌شود.',
+      hoursLabel: (values) => `عامل‌های فعال در هر ساعت امروز، به وقت UTC: ${values}`,
+      accountsTitle: 'مصرف حساب‌های هوش مصنوعی',
+      accountsNone: 'خوانش تازه‌ای در دسترس نیست',
+      accountsBody: 'وقتی خوانش‌ها منتشر شوند، مصرف هفتگی هر حساب اینجا نمایش داده می‌شود.',
+      mixTitle: 'تیم به تفکیک واحد',
+      otherDepartments: 'واحدهای دیگر',
+      dayLabel: (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('fa-IR', { timeZone: 'UTC', day: 'numeric', month: 'short' }),
+      colAgents: 'عامل‌ها',
+      colTrend: 'هفت روز',
+      totalRow: 'جمع',
     },
   },
   en: {
@@ -263,6 +319,8 @@ export const COPY: Record<Lang, Copy> = {
     unavailableBody: 'The team chart can’t be shown right now. Please check again in a few minutes.',
     emptyTitle: 'The team chart will appear here soon',
     emptyBody: 'There are no agents to show yet.',
+    pendingTitle: 'Loading the latest team data',
+    pendingBody: 'The live figures are on their way; this page refreshes by itself in a moment.',
     locale: 'en-GB',
     artLabel: 'An illustration of an organisation chart',
     footerCopyright: '© 2026 KSS',
@@ -275,9 +333,7 @@ export const COPY: Record<Lang, Copy> = {
       subAnswers: 'Fast, honest answers in Persian or English, by text or voice.',
       subDeletion: 'and deleting data always needs a person’s approval.',
       ctaSite: 'Visit kss.ir',
-      ctaContact: 'Contact us',
       live: (time) => `Live data from the team, updated ${time} UTC`,
-      nav: { what: 'What they do', how: 'How it works', team: 'The live team', label: 'Sections' },
       whatTitle: 'What the agents do',
       cards: [
         { key: 'support', title: 'Customer support', body: STORY_CLAIMS.en.support },
@@ -303,6 +359,30 @@ export const COPY: Record<Lang, Copy> = {
       standby: 'Standby',
       headsOfDepartment: 'Heads of department',
       executiveAssistants: 'Executive assistants',
+    },
+    dash: {
+      pageTitle: 'Team dashboard',
+      nav: { label: 'Sections', overview: 'Overview', usage: 'Usage & activity', what: 'What they do', teams: 'Teams', activity: 'Departments', how: 'How it works' },
+      menu: 'Sections',
+      statDepartments: 'Departments',
+      statMessagesHint: 'Messages sent, day by day',
+      statTeamsHint: (products) => (products ? `${products} products in service` : 'Each with its own lead'),
+      usageTitle: 'Usage & activity',
+      messagesTitle: 'Messages per day, by department',
+      messagesBody: 'Messages the agents sent in the last seven days (UTC days). Small counts are grouped under “other departments”.',
+      department: 'Department',
+      hoursTitle: 'Active agents per hour, today',
+      hoursBody: 'Hours in UTC. An hour with fewer than 3 active agents is drawn short and grey.',
+      hoursLabel: (values) => `Active agents per hour today, UTC: ${values}`,
+      accountsTitle: 'AI account usage',
+      accountsNone: 'No recent reading',
+      accountsBody: 'Each account’s weekly usage will appear here once readings are published.',
+      mixTitle: 'The team by department',
+      otherDepartments: 'Other departments',
+      dayLabel: (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric' }),
+      colAgents: 'Agents',
+      colTrend: '7 days',
+      totalRow: 'Total',
     },
   },
 };

@@ -42,6 +42,13 @@ function logFailure(code: string, detail?: string) {
   console.error(`[fleet-public] snapshot unavailable: ${code}${detail ? ` (${detail})` : ''}`);
 }
 
+/** What a failure falls back to, for its log line: the last good copy and its age, or nothing. */
+function staleNote(): string {
+  if (!lastGood) return 'no good copy yet';
+  const age = Math.round((Date.now() - lastGood.at) / 1000);
+  return Date.now() - lastGood.at <= staleLimitMs() ? `showing the last good copy (${age} s old)` : 'the last good copy is too old';
+}
+
 function fromStale(): SnapshotState {
   if (lastGood && Date.now() - lastGood.at <= staleLimitMs()) return { state: 'ok', snapshot: lastGood.snapshot };
   return { state: 'unavailable' };
@@ -90,20 +97,21 @@ export async function loadSnapshot(): Promise<SnapshotState> {
     attempt = await fetchOnce(url);
   }
   if (!attempt.ok) {
-    logFailure(attempt.code, attempt.detail);
+    logFailure(attempt.code, `${attempt.detail ? `${attempt.detail}, ` : ''}${staleNote()}`);
     return fromStale();
   }
   const body = attempt.body;
 
   const parsed = parseSnapshot(body);
   if (!parsed.ok) {
-    logFailure('SNAPSHOT_INVALID', parsed.reason);
+    logFailure('SNAPSHOT_INVALID', `${parsed.reason}, ${staleNote()}`);
     return fromStale();
   }
   if (parsed.snapshot.agents.length === 0) {
     // A valid, empty team is not an error: nothing to log, nothing to keep.
     return { state: 'empty' };
   }
+  if (!lastGood) console.log(`[fleet-public] snapshot ok: first live data since start (${parsed.snapshot.agents.length} agents)`);
   lastGood = { snapshot: parsed.snapshot, at: Date.now() };
   return { state: 'ok', snapshot: parsed.snapshot };
 }

@@ -56,6 +56,11 @@ export interface Snapshot {
   agents: PublicAgent[];
   departments: string[];
   activity: ActivityBucket[];
+  /**
+   * Distinct active agents in each UTC hour of today, oldest first (24 values), or null when the service does not
+   * send it. A value under 3 is suppressed at the source (null, or 0 from an older shape): both read "fewer than 3".
+   */
+  activeByHour: Day[] | null;
   /** The activity period's days, oldest first. */
   days: string[];
 }
@@ -163,7 +168,11 @@ export function parseSnapshot(body: unknown): ParseResult {
   for (const d of [...agents.map((a) => a.department), ...activity.map((b) => b.department)]) {
     if (d !== null && !departments.includes(d)) departments.push(d);
   }
-  return { ok: true, snapshot: { generatedAt, agents, departments, activity, days } };
+  // Optional and new: a malformed value is IGNORED rather than refusing the snapshot, so a shape change in this one
+  // field can never freeze the whole page on its last good copy.
+  const hours = body.activeByHour;
+  const activeByHour = Array.isArray(hours) && hours.length === 24 && hours.every((x) => x === null || count(x) !== null) ? (hours as Day[]) : null;
+  return { ok: true, snapshot: { generatedAt, agents, departments, activity, activeByHour, days } };
 }
 
 /** Every UTC day from `from` to `to`, inclusive. */
@@ -240,7 +249,10 @@ export interface ChartDepartmentActivity {
   department: string | null;
   sent: number;
   received: number;
+  /** Sent plus received, per day. */
   daily: number[];
+  /** Sent only, per day: what the messages chart stacks, so a message between two agents is counted once. */
+  dailySent: number[];
 }
 
 export interface ChartModel {
@@ -255,6 +267,9 @@ export interface ChartModel {
   other: ChartDepartmentActivity | null;
   totalSent: number;
   totalReceived: number;
+  activeByHour: Day[] | null;
+  /** Head count per served department, in the service's order (departments with nobody left out). */
+  headcount: { department: string; count: number }[];
 }
 
 export function buildChart(s: Snapshot): ChartModel {
@@ -340,6 +355,7 @@ export function buildChart(s: Snapshot): ChartModel {
     sent: sum(dept, (b) => b.direction === 'sent'),
     received: sum(dept, (b) => b.direction === 'received'),
     daily: days.map((d) => sum(dept, (b) => b.day === d)),
+    dailySent: days.map((d) => sum(dept, (b) => b.day === d && b.direction === 'sent')),
   });
   const activity = s.departments
     .map(deptActivity)
@@ -362,5 +378,7 @@ export function buildChart(s: Snapshot): ChartModel {
     other: otherRow.sent + otherRow.received > 0 ? otherRow : null,
     totalSent: s.activity.filter((b) => b.direction === 'sent').reduce((acc, b) => acc + b.count, 0),
     totalReceived: s.activity.filter((b) => b.direction === 'received').reduce((acc, b) => acc + b.count, 0),
+    activeByHour: s.activeByHour,
+    headcount: s.departments.map((department) => ({ department, count: s.agents.filter((a) => a.department === department).length })).filter((d) => d.count > 0),
   };
 }

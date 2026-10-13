@@ -101,8 +101,8 @@ for (const [lang, route, otherHref] of [
     });
     test('exactly one <h1>', () => assert.equal((html.match(/<h1[\s>]/g) ?? []).length, 1));
     test('the team chart section is there, and never shows a technical code', () => {
-      // This suite runs with no snapshot service, so the section is the graceful notice.
-      assert.match(html, /data-chart-state="(ok|empty|unavailable)"/);
+      // This suite runs with no snapshot service, so the section is the build page ("loading the latest data").
+      assert.match(html, /data-chart-state="(ok|empty|unavailable|pending)"/);
       assert.ok(!html.includes('SNAPSHOT_') && !html.includes('FLEET_'), 'no error code reaches the page');
     });
     test('HTTPS only: Strict-Transport-Security is sent', () => {

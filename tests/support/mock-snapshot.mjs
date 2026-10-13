@@ -115,6 +115,8 @@ export function makeSnapshot(mode = 'ok') {
     buckets.push({ department: null, day, direction: 'received', count: 2 + (d % 4) });
   }
   const body = { generatedAt: new Date().toISOString(), agents, departments: DEPARTMENTS, roles: ROLES, activity: { ...activityRange, buckets } };
+  // Today's hours (UTC): a quiet hour is suppressed (null), as the service will send it.
+  if (mode === 'full') body.activeByHour = Array.from({ length: 24 }, (_, h) => ((h * 7) % 11 < 3 ? null : 3 + ((h * 7) % 11)));
   if (mode === 'invalid') body.activity = buckets; // the wrong shape: an array, not {from, to, buckets}
   return body;
 }
