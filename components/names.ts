@@ -19,7 +19,17 @@ export const ROLE_NAMES_FA: Record<string, string> = {
   DBA: 'مدیر پایگاه داده',
   Backend: 'بک‌اند',
   Frontend: 'فرانت‌اند',
-  'Network Expert': 'کارشناس شبکه'
+  'Network Expert': 'کارشناس شبکه',
+  'FortiGate expert': 'کارشناس فورتی‌گیت',
+  'MikroTik expert': 'کارشناس میکروتیک',
+  'Cisco expert': 'کارشناس سیسکو',
+  'Virtualization expert': 'کارشناس مجازی‌سازی',
+  'Windows Server expert': 'کارشناس ویندوز سرور',
+  'Backup & Monitoring expert': 'کارشناس پشتیبان‌گیری و پایش',
+  'Cloud expert': 'کارشناس رایانش ابری',
+  'M365 & Mail expert': 'کارشناس مایکروسافت ۳۶۵ و ایمیل',
+  'Security expert': 'کارشناس امنیت',
+  'Endpoints expert': 'کارشناس رایانه‌ها و کاربران'
 };
 
 export const DEPARTMENT_NAMES_FA: Record<string, string> = {
