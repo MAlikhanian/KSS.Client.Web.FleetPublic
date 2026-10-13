@@ -36,7 +36,11 @@ const nextConfig = {
   // image-optimization endpoint and its whole class of advisories.
   images: { unoptimized: true },
   async headers() {
-    return [{ source: '/:path*', headers: SECURITY_HEADERS }];
+    return [
+      { source: '/:path*', headers: SECURITY_HEADERS },
+      // Avatar photos change rarely; a replaced file may be served from a cache for up to a day.
+      { source: '/avatars/:file*', headers: [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }] },
+    ];
   },
 };
 

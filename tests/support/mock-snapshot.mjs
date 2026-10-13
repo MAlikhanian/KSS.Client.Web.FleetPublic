@@ -99,6 +99,8 @@ export function makeSnapshot(mode = 'ok') {
           lastActiveAt: new Date(Math.floor((Date.now() - [2, 70, 1500, 4400][i % 4] * 60_000) / 60_000) * 60_000).toISOString(),
           // As served: a SUPPRESSED day (fewer than 3) is null; a true zero would be 0.
           activity7d: Array.from({ length: 7 }, (_, d) => ((i * 3 + d * 5) % 9 < 3 ? null : (i * 3 + d * 5) % 9)),
+          // Support rooms (invented labels): every third support agent has two private clients and a named room.
+          rooms: r.department !== 'Customer Support' ? null : i % 3 === 0 ? ['Private client', 'North Desk', 'Private client'] : ['South Desk'],
         }
       : {}),
   }));

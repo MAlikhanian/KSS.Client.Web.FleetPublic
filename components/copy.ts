@@ -44,6 +44,12 @@ export interface Copy {
   engineeringBody: string;
   departmentsBody: string;
   teamLead: string;
+  /** The badge on every avatar, and the avatar's accessible name: the agent is an AI. */
+  aiBadge: string;
+  avatarLabel: (name: string) => string;
+  /** The support rooms under an agent; a repeated label is shown once with its count. */
+  roomsLabel: string;
+  roomTimes: (label: string, n: number) => string;
   /** "+3" on an avatar group. */
   more: (n: number) => string;
   /** "Last activity: 5 minutes ago", built from Intl.RelativeTimeFormat output. Never "online" or "active". */
@@ -199,6 +205,10 @@ export const COPY: Record<Lang, Copy> = {
     engineeringBody: 'هر تیم مهندسی با عنوان کارش، سرپرست و اعضایش.',
     departmentsBody: 'واحدهای دیگر، هر کدام با اعضایش.',
     teamLead: 'سرپرست',
+    aiBadge: 'AI',
+    avatarLabel: (name) => `${name}، عامل هوش مصنوعی`,
+    roomsLabel: 'اتاق‌های پشتیبانی',
+    roomTimes: (label, n) => `${label} ×${n.toLocaleString('fa-IR')}`,
     more: (n) => `+${n.toLocaleString('fa-IR')}`,
     lastActive: (relative) => `آخرین فعالیت: ${relative}`,
     sparkLabel: (values) => `پیام‌ها در هفت روز گذشته، از قدیم به جدید: ${values}`,
@@ -319,6 +329,10 @@ export const COPY: Record<Lang, Copy> = {
     engineeringBody: 'Every engineering team by what it works on, with its lead and members.',
     departmentsBody: 'The other departments, each with its members.',
     teamLead: 'Lead',
+    aiBadge: 'AI',
+    avatarLabel: (name) => `${name}, AI agent`,
+    roomsLabel: 'Support rooms',
+    roomTimes: (label, n) => `${label} ×${n}`,
     more: (n) => `+${n}`,
     lastActive: (relative) => `Last activity: ${relative}`,
     sparkLabel: (values) => `Messages over the last seven days, oldest first: ${values}`,

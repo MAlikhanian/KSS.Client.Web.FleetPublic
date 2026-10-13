@@ -1,3 +1,4 @@
+import { photoFor } from './avatars';
 import type { Copy } from './copy';
 import { departmentTitle, roleTitle } from './public-titles';
 import { type ChartBox, type ChartModel, type ChartPerson, type TeamDay } from './snapshot';
@@ -66,11 +67,27 @@ function LastActive({ p, now, c, quiet }: { p: ChartPerson; now: string | null; 
   );
 }
 
+/** A repeated room label is shown once with its count ("Private client ×2"), in the order first served. */
+function Rooms({ rooms, c }: { rooms: string[] | null; c: Copy }) {
+  if (!rooms || rooms.length === 0) return null;
+  const counts = new Map<string, number>();
+  for (const r of rooms) counts.set(r, (counts.get(r) ?? 0) + 1);
+  return (
+    <ul aria-label={c.roomsLabel} className="m-0 flex basis-full list-none flex-wrap gap-1 p-0 pt-0.5" data-testid="rooms">
+      {[...counts].map(([label, n]) => (
+        <li key={label} className="rounded-full bg-muted px-2 py-0.5 text-xs leading-5 text-muted-foreground" data-testid="room">
+          <bdi>{n > 1 ? c.roomTimes(label, n) : label}</bdi>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function PersonRow({ p, c, now, strong, quiet }: { p: ChartPerson; c: Copy; now: string | null; strong?: boolean; quiet: boolean }) {
   const n = names(c);
   return (
     <li className="flex min-w-0 items-start gap-2.5 py-1.5" style={p.depth > 1 ? { paddingInlineStart: `${(p.depth - 1) * 0.75}rem` } : undefined}>
-      <Avatar name={p.firstName} />
+      <Avatar photo={photoFor(p.firstName)} label={c.avatarLabel(p.firstName)} badge={c.aiBadge} />
       <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm leading-6">
         <bdi className={strong ? 'line-name font-extrabold' : 'line-name font-semibold'}>{p.firstName}</bdi>
         <span className="line-role text-muted-foreground [overflow-wrap:anywhere]">
@@ -83,6 +100,7 @@ function PersonRow({ p, c, now, strong, quiet }: { p: ChartPerson; c: Copy; now:
           </span>
         ) : null}
         <LastActive p={p} now={now} c={c} quiet={quiet} />
+        <Rooms rooms={p.rooms} c={c} />
       </span>
     </li>
   );
@@ -143,7 +161,7 @@ function BoxCard({ box, c, now, quiet }: { box: ChartBox; c: Copy; now: string |
           </>
         }
         titleProps={{ 'data-box-title': box.kind }}
-        aside={<AvatarGroup names={box.people.map((p) => p.firstName)} moreLabel={c.more} />}
+        aside={<AvatarGroup people={box.people.map((p) => ({ photo: photoFor(p.firstName), label: c.avatarLabel(p.firstName) }))} moreLabel={c.more} badge={c.aiBadge} />}
       />
       {box.kind === 'lead' && box.project ? (
         <p className="m-0 border-b border-border px-4 py-2 text-xs text-muted-foreground lg:px-5" data-testid="team-lead">

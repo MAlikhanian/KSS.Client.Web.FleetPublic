@@ -12,7 +12,7 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { register } from 'node:module';
@@ -265,7 +265,14 @@ describe('served pages against the snapshot service, every state', { timeout: 60
   let mock;
   let app;
   let firstState = {};
+  // A synthetic photo for one mock agent (an invented grey square), present only while this suite runs.
+  const PHOTO = SAMPLE.agents[0].firstName.toLowerCase();
+  const photoFiles = [`${PHOTO}.webp`, `${PHOTO}@2x.webp`].map((f) => path.join(ROOT, 'public', 'avatars', f));
   before(async () => {
+    const sharp = (await import('sharp')).default;
+    for (const [f, size] of [[photoFiles[0], 160], [photoFiles[1], 320]]) {
+      await sharp({ create: { width: size, height: size, channels: 3, background: '#8a8f99' } }).webp().toFile(f);
+    }
     mock = await startMock();
     // No memo and no stale fallback in the data path, so each REGENERATION sees the mock's current mode.
     app = await startApp({
@@ -288,6 +295,14 @@ describe('served pages against the snapshot service, every state', { timeout: 60
     assert.deepEqual(firstState, { '/': 'pending', '/en': 'pending' });
   });
 
+  test('avatar files: served from this host, with a day\'s cache; a missing one is a plain 404', async () => {
+    const res = await fetch(`${app.base}/avatars/${PHOTO}.webp`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type') ?? '', /image\/webp/);
+    assert.match(res.headers.get('cache-control') ?? '', /max-age=86400/);
+    assert.equal((await fetch(`${app.base}/avatars/nobody.webp`)).status, 404);
+  });
+
   test('the page is served from the cache, not rendered per request', async () => {
     const res = await fetch(app.base + '/');
     assert.match(res.headers.get('x-nextjs-cache') ?? '', /^(HIT|STALE)$/);
@@ -296,6 +311,7 @@ describe('served pages against the snapshot service, every state', { timeout: 60
   after(async () => {
     await app?.stop();
     mock?.server.close();
+    for (const f of photoFiles) rmSync(f, { force: true });
   });
 
   const page = async (route) => {
@@ -324,6 +340,17 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       assert.ok(html.includes('data-testid="accounts"') && html.includes(route === '/' ? 'خوانش تازه‌ای در دسترس نیست' : 'No recent reading'), `${route}: account usage reads "no recent reading"`);
       assert.ok(!html.includes('data-testid="hours-chart"'), `${route}: no hourly chart when the service sends no hours`);
       assert.ok(html.includes('data-testid="team-mix"'), `${route}: the team mix`);
+      // Avatars: a photo where a file exists, the generic silhouette otherwise, never an initial; an AI badge on each.
+      const avatars = (html.match(/data-testid="avatar"/g) ?? []).length;
+      assert.ok(avatars >= 103, `${route}: an avatar for every person (${avatars})`);
+      assert.equal((html.match(/data-testid="ai-badge"/g) ?? []).length, avatars, `${route}: an AI badge on every avatar`);
+      assert.match(html, new RegExp(`<img src="/avatars/${PHOTO}\\.webp" srcSet="/avatars/${PHOTO}\\.webp 1x, /avatars/${PHOTO}@2x\\.webp 2x"[^>]*loading="lazy"`), `${route}: the photo, 1x and 2x, lazy`);
+      assert.ok(html.includes('data-testid="avatar-generic"'), `${route}: the generic avatar for agents without a photo`);
+      const srcs = [...html.matchAll(/<img [^>]*src="([^"]+)"/g)].map((m) => m[1]);
+      assert.ok(srcs.length > 0 && srcs.every((s) => /^\/avatars\/[a-z][a-z0-9-]*\.webp$/.test(s)), `${route}: every image is our own avatar file, by slug only`);
+      const label = route === '/' ? '، عامل هوش مصنوعی' : ', AI agent';
+      assert.equal((html.match(new RegExp(`role="img" aria-label="[^"]+${label}"`, 'g')) ?? []).length, avatars, `${route}: every avatar's name says it is an AI agent`);
+      assert.ok(!html.includes('data-testid="rooms"'), `${route}: no room slot when the service sends no rooms`);
     }
   });
 
@@ -413,6 +440,10 @@ describe('served pages against the snapshot service, every state', { timeout: 60
       assert.match(html, /data-testid="usage-five-hour" data-band="unknown"/, route + ': an unknown percentage is not drawn');
       assert.ok(html.includes(lang === 'fa' ? 'بازنشانی: ' : 'resets '), route + ': reset times');
       assert.ok(html.includes(lang === 'fa' ? 'آخرین خوانش: ' : 'As of '), route + ': the reading time');
+      // Rooms under support agents; a repeated label once, with its count.
+      assert.ok(html.includes('data-testid="rooms"'), route + ': the room slot');
+      assert.ok(html.includes(lang === 'fa' ? 'Private client ×۲' : 'Private client ×2'), route + ': "Private client ×2"');
+      assert.ok(!/Private client<\/bdi>[^]*?Private client<\/bdi>/.test(html.slice(html.indexOf('data-testid="rooms"'), html.indexOf('</ul>', html.indexOf('data-testid="rooms"')))), route + ': never listed twice in one slot');
       assert.ok(!html.includes(PROJECT_CANARY), route + ': no internal project name');
       assert.ok(html.includes(lang === 'fa' ? 'کمتر از ۳' : 'fewer than 3'), route + ': a suppressed day reads as fewer than 3, never as none');
       assert.ok(html.includes(lang === 'fa' ? 'دست‌کم ' : 'at least '), route + ': a total over suppressed days is a lower bound');
