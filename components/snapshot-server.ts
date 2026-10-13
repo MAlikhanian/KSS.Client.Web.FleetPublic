@@ -8,8 +8,14 @@
  * Caching: the service already caches for 60 seconds, so this keeps the last
  * good snapshot in memory for FLEET_PUBLIC_CACHE_SECONDS (default 30) and asks
  * again after that. If a fetch then fails, the last good snapshot keeps being
- * shown for up to FLEET_PUBLIC_STALE_SECONDS (default 600, ten minutes); after
- * that the page shows its graceful state.
+ * shown for up to FLEET_PUBLIC_STALE_SECONDS (default 86400, one day); the page
+ * names its update time, so an older chart is honest. Only with no good copy at
+ * all does the page show its graceful state.
+ *
+ * A fetch that times out, cannot connect or gets a 5xx is retried ONCE after a
+ * short pause: a service that is restarting or still cold answers the second
+ * time. Failures are never cached; the next request asks again. Worst case per
+ * request: two timeouts plus the pause (13.5 s).
  * Failures are logged here with a code, and never shown to a visitor.
  */
 import { parseSnapshot, type Snapshot } from './snapshot';
@@ -19,7 +25,8 @@ export type SnapshotState =
   | { state: 'empty' }
   | { state: 'unavailable' };
 
-const TIMEOUT_MS = 4000;
+export const TIMEOUT_MS = 6000;
+export const RETRY_DELAY_MS = 1500;
 
 let lastGood: { snapshot: Snapshot; at: number } | null = null;
 
@@ -29,7 +36,7 @@ function secondsFromEnv(name: string, fallback: number): number {
   return (Number.isFinite(raw) && raw >= 0 ? raw : fallback) * 1000;
 }
 const cacheMs = () => secondsFromEnv('FLEET_PUBLIC_CACHE_SECONDS', 30);
-const staleLimitMs = () => secondsFromEnv('FLEET_PUBLIC_STALE_SECONDS', 600);
+const staleLimitMs = () => secondsFromEnv('FLEET_PUBLIC_STALE_SECONDS', 86400);
 
 function logFailure(code: string, detail?: string) {
   console.error(`[fleet-public] snapshot unavailable: ${code}${detail ? ` (${detail})` : ''}`);
@@ -38,6 +45,24 @@ function logFailure(code: string, detail?: string) {
 function fromStale(): SnapshotState {
   if (lastGood && Date.now() - lastGood.at <= staleLimitMs()) return { state: 'ok', snapshot: lastGood.snapshot };
   return { state: 'unavailable' };
+}
+
+type Attempt = { ok: true; body: unknown } | { ok: false; code: string; detail?: string; retry: boolean };
+
+/** One request to the service. A timeout, a connection error or a 5xx can be retried; anything else cannot. */
+async function fetchOnce(url: URL): Promise<Attempt> {
+  try {
+    const res = await fetch(url, {
+      cache: 'no-store',
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!res.ok) return { ok: false, code: 'SNAPSHOT_HTTP_ERROR', detail: `status ${res.status}`, retry: res.status >= 500 };
+    return { ok: true, body: await res.json() };
+  } catch (e) {
+    const timeout = e instanceof Error && e.name === 'TimeoutError';
+    return { ok: false, code: timeout ? 'SNAPSHOT_TIMEOUT' : 'SNAPSHOT_FETCH_FAILED', retry: true };
+  }
 }
 
 export async function loadSnapshot(): Promise<SnapshotState> {
@@ -57,22 +82,17 @@ export async function loadSnapshot(): Promise<SnapshotState> {
     return { state: 'unavailable' };
   }
 
-  let body: unknown;
-  try {
-    const res = await fetch(url, {
-      cache: 'no-store',
-      headers: { accept: 'application/json' },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      logFailure('SNAPSHOT_HTTP_ERROR', `status ${res.status}`);
-      return fromStale();
-    }
-    body = await res.json();
-  } catch (e) {
-    logFailure(e instanceof Error && e.name === 'TimeoutError' ? 'SNAPSHOT_TIMEOUT' : 'SNAPSHOT_FETCH_FAILED');
+  let attempt = await fetchOnce(url);
+  if (!attempt.ok && attempt.retry) {
+    logFailure(attempt.code, `${attempt.detail ? `${attempt.detail}, ` : ''}retrying once`);
+    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+    attempt = await fetchOnce(url);
+  }
+  if (!attempt.ok) {
+    logFailure(attempt.code, attempt.detail);
     return fromStale();
   }
+  const body = attempt.body;
 
   const parsed = parseSnapshot(body);
   if (!parsed.ok) {
