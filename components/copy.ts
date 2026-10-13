@@ -27,6 +27,11 @@ export interface Copy {
   chartTitle: string;
   chartBody: string;
   members: (count: string) => string;
+  reportsTo: (name: string) => string;
+  /** When the snapshot was generated, already formatted with its time zone. */
+  updated: (time: string) => string;
+  /** The IANA zone the update time is shown in, and its label. */
+  timeZone: string;
   leadership: string;
   activityTitle: string;
   activityBody: string;
@@ -58,8 +63,11 @@ export const COPY: Record<Lang, Copy> = {
     intro:
       `${LEGAL_NAME_FA} تیمی از عامل‌های هوش مصنوعی دارد که مثل یک سازمان با هم کار می‌کنند. هر عامل نقش مشخصی در یک واحد دارد و هر تیم سرپرستی دارد که کارها را برنامه‌ریزی و تقسیم می‌کند. در ادامه، همین تیم را همان‌طور که امروز هست می‌بینید.`,
     chartTitle: 'تیم امروز',
-    chartBody: 'هر عامل با نام کوچک، نقش و واحدش، و اینکه به چه کسی گزارش می‌دهد. رنگ هر عامل نقش او را نشان می‌دهد.',
+    chartBody: 'هر عامل با نام کوچک، نقش و واحدش، و اینکه به چه کسی گزارش می‌دهد.',
     members: (count) => `${count} عامل`,
+    reportsTo: (name) => `گزارش به ${name}`,
+    updated: (time) => `به‌روزرسانی: ${time} به وقت تهران`,
+    timeZone: 'Asia/Tehran',
     leadership: 'رهبری',
     activityTitle: 'فعالیت در هفت روز گذشته',
     activityBody: 'پیام‌هایی که عامل‌ها برای هم فرستاده و از هم دریافت کرده‌اند، به تفکیک واحد. تعدادهای کوچک با هم و با عنوان «سایر» نشان داده می‌شوند.',
@@ -72,7 +80,7 @@ export const COPY: Record<Lang, Copy> = {
     emptyTitle: 'نمودار تیم به‌زودی اینجا نمایش داده می‌شود',
     emptyBody: 'هنوز عاملی برای نمایش وجود ندارد.',
     locale: 'fa-IR',
-    artLabel: 'تصویری از یک نمودار سازمانی که با رنگ نقش‌های تیم کشیده شده است',
+    artLabel: 'تصویری از یک نمودار سازمانی',
     footerCopyright: `© ۲۰۲۶ ${LEGAL_NAME_FA}`,
     footerCookies: 'این سایت هیچ کوکی‌ای ذخیره نمی‌کند.',
   },
@@ -89,8 +97,11 @@ export const COPY: Record<Lang, Copy> = {
     intro:
       'KSS runs a team of AI agents that work together the way a company does. Each agent has one role in one department, and every team has a lead who plans the work and hands it out. Below is that team as it is today.',
     chartTitle: 'The team today',
-    chartBody: 'Every agent by first name, role and department, and who they report to. Each agent’s colour marks their role.',
+    chartBody: 'Every agent by first name, role and department, and who they report to.',
     members: (count) => `${count} agents`,
+    reportsTo: (name) => `Reports to ${name}`,
+    updated: (time) => `Updated ${time} UTC`,
+    timeZone: 'UTC',
     leadership: 'Leadership',
     activityTitle: 'Activity in the last seven days',
     activityBody: 'Messages the agents sent to and received from each other, per department. Small counts are grouped together as “other”.',
@@ -103,7 +114,7 @@ export const COPY: Record<Lang, Copy> = {
     emptyTitle: 'The team chart will appear here soon',
     emptyBody: 'There are no agents to show yet.',
     locale: 'en-GB',
-    artLabel: 'An illustration of an organisation chart drawn in the team’s role colours',
+    artLabel: 'An illustration of an organisation chart',
     footerCopyright: '© 2026 KSS',
     footerCookies: 'This site sets no cookies.',
   },

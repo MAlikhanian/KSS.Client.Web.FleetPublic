@@ -1,42 +1,45 @@
 // A synthetic stand-in for the public snapshot service, for tests and local
 // screenshots only. Shaped like the live team (department, role and team
-// sizes); every first name is invented. Ordinals start at 7001 on purpose: a
-// number that distinctive lets a test prove no ordinal reaches the page.
+// sizes); every first name is invented. Ordinals start at 870001 on purpose: a
+// six-digit number that distinctive (outside the bundler's module-id range)
+// lets a test prove no ordinal reaches the page.
 //
 // Each agent also carries a field the real snapshot does NOT have, `project`,
 // holding a canary value. The parser must drop it, so a test can prove no
-// project name ever reaches the page even if the service sent one.
+// project name ever reaches the page even if the service sent one. It also
+// carries a `color` token, which the page must ignore: there is no per-person
+// colour on the page.
 //
 // Standalone: node tests/support/mock-snapshot.mjs --serve <port> [--mode ok|empty|error|invalid|limited|noreports]
 import http from 'node:http';
 
-export const ORDINAL_BASE = 7001;
+export const ORDINAL_BASE = 870001;
 export const PROJECT_CANARY = 'CanaryProjectZq';
 
-const DEPARTMENTS = ['Executive', 'Advisory', 'Engineering', 'Board Office', "Founder's Office", 'Executive Office', 'Legal', 'Secretariat', 'Operations', 'Customer Support', 'Unassigned'];
-const ROLES = ['CEO', 'CEO Advisor', 'CTO', 'COO', 'Agent', 'Assistant', 'Contracts', 'Secretary', 'Scheduler', 'Support', 'Tech Lead', 'DBA', 'Backend', 'Frontend'];
+const DEPARTMENTS = ['Executive', 'Engineering', 'Executive Office', 'Legal', 'Secretariat', 'Operations', 'Customer Support', 'Network', 'Unassigned'];
+const ROLES = ['CEO', 'CTO', 'COO', 'CNO', 'Agent', 'Assistant', 'Contracts', 'Secretary', 'Scheduler', 'Support', 'Tech Lead', 'DBA', 'Backend', 'Frontend', 'Network Expert'];
 const SQUADS = [5, ...Array(15).fill(4), 3];
 
 const SYL_A = ['Al', 'Bri', 'Ca', 'Da', 'El', 'Fe', 'Ga', 'Ha', 'Is', 'Jo', 'Ka', 'Lo', 'Ma', 'Ne', 'Or', 'Pa', 'Ro', 'Sa', 'Ta', 'Vi', 'Wy', 'Ze', 'Ari', 'Mo'];
-const SYL_B = ['na', 'ren', 'lo', 'vi'];
+const SYL_B = ['na', 'ren', 'lo', 'vi', 'ra'];
 const first = (i) => SYL_A[i % SYL_A.length] + SYL_B[Math.floor(i / SYL_A.length)];
-const COLOUR = { CEO: 'cyan', COO: 'blue', CTO: 'blue', 'CEO Advisor': 'pink', Assistant: 'purple', Support: 'red', Contracts: 'green', Secretary: 'green', Scheduler: 'orange', 'Tech Lead': 'yellow', DBA: 'yellow', Backend: 'yellow', Frontend: 'yellow' };
+// A retired field the page must ignore.
+const COLOUR = { CEO: 'cyan', COO: 'blue', CTO: 'blue', CNO: 'blue', Assistant: 'purple', Support: 'red', 'Tech Lead': 'yellow' };
 
 function people() {
   const rows = [];
   const add = (role, department, boss) => rows.push({ role, department, boss }) - 1;
   const ceo = add('CEO', 'Executive', null);
-  add('Assistant', 'Board Office', null);
-  add('Assistant', "Founder's Office", null);
-  add('Assistant', "Founder's Office", null);
   const coo = add('COO', 'Executive', ceo);
-  add('CEO Advisor', 'Advisory', ceo);
-  add('Assistant', 'Executive Office', ceo);
   const cto = add('CTO', 'Engineering', ceo);
-  for (let i = 0; i < 13; i++) add('Support', 'Customer Support', coo);
+  const cno = add('CNO', 'Network', ceo);
+  add('Assistant', 'Executive Office', ceo);
+  add('Assistant', 'Executive Office', ceo);
+  for (let i = 0; i < 16; i++) add('Support', 'Customer Support', coo);
   add('Contracts', 'Legal', coo);
   add('Secretary', 'Secretariat', coo);
   add('Scheduler', 'Operations', coo);
+  for (let i = 0; i < 10; i++) add('Network Expert', 'Network', cno);
   for (const size of SQUADS) {
     const lead = add('Tech Lead', 'Engineering', cto);
     const members = size === 5 ? ['DBA', 'Backend', 'Frontend', 'Backend'] : size === 3 ? ['Backend', 'Frontend'] : ['DBA', 'Backend', 'Frontend'];
@@ -69,7 +72,7 @@ export function makeSnapshot(mode = 'ok') {
   const weight = { Engineering: 9, 'Customer Support': 5, Executive: 2 };
   for (let d = 6; d >= 0; d--) {
     const day = utcDay(d);
-    DEPARTMENTS.slice(0, 10).forEach((dept, i) => {
+    DEPARTMENTS.slice(0, 8).forEach((dept, i) => {
       const base = (weight[dept] ?? 1) * 4 + ((d * 7 + i * 3) % 9);
       buckets.push({ department: dept, day, direction: 'sent', count: base });
       buckets.push({ department: dept, day, direction: 'received', count: Math.max(0, base + ((i + d) % 5) - 2) });

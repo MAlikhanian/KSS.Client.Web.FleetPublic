@@ -8,6 +8,7 @@ export const ROLE_NAMES_FA: Record<string, string> = {
   'CEO Advisor': 'مشاور مدیرعامل',
   CTO: 'مدیر ارشد فناوری',
   COO: 'مدیر ارشد عملیات',
+  CNO: 'مدیر ارشد شبکه',
   Agent: 'عامل',
   Assistant: 'دستیار',
   Contracts: 'کارشناس قراردادها',
@@ -17,7 +18,8 @@ export const ROLE_NAMES_FA: Record<string, string> = {
   'Tech Lead': 'سرپرست فنی',
   DBA: 'مدیر پایگاه داده',
   Backend: 'بک‌اند',
-  Frontend: 'فرانت‌اند'
+  Frontend: 'فرانت‌اند',
+  'Network Expert': 'کارشناس شبکه'
 };
 
 export const DEPARTMENT_NAMES_FA: Record<string, string> = {
@@ -31,5 +33,6 @@ export const DEPARTMENT_NAMES_FA: Record<string, string> = {
   Secretariat: 'دبیرخانه',
   Operations: 'عملیات',
   'Customer Support': 'پشتیبانی مشتریان',
+  Network: 'شبکه',
   Unassigned: 'بدون واحد'
 };

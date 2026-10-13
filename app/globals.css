@@ -26,15 +26,8 @@
   --muted: #5a6677;
   --line: #c9d0db;
 
-  /* Role colours: the team's own way of marking a role. Used only in the chart. */
-  --role-cyan: #1597a8;
-  --role-blue: #2f5bd3;
-  --role-violet: #7456bf;
-  --role-pink: #c94f86;
-  --role-amber: #d99a12;
-  --role-red: #cc4038;
-  --role-green: #2c8c55;
-  --role-orange: #d46f24;
+  /* The one accent colour: activity bars. No per-person colour anywhere. */
+  --accent: #2f5bd3;
 
   --measure: 36rem;
   --gutter: clamp(1.25rem, 4vw, 2.5rem);
@@ -290,6 +283,20 @@ a:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.line-reports {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.updated {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
 .initial {
   flex: none;
   display: inline-flex;
@@ -298,7 +305,7 @@ a:focus-visible {
   width: 1.5rem;
   height: 1.5rem;
   border-radius: 999px;
-  background: var(--accent, var(--muted));
+  background: var(--muted);
   color: #fff;
   font-weight: 800;
   font-size: 0.6875rem;
@@ -365,7 +372,7 @@ a:focus-visible {
   flex: 1;
   min-width: 0;
   border-radius: 2px;
-  background: var(--role-blue);
+  background: var(--accent);
 }
 
 .bars .bar-zero {

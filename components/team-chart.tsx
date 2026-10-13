@@ -1,19 +1,17 @@
-import type { CSSProperties } from 'react';
 import type { Copy } from './copy';
 import { DEPARTMENT_NAMES_FA, ROLE_NAMES_FA } from './names';
 import type { ChartModel, ChartPerson } from './snapshot';
 
 /**
  * The public team chart, in the same dense layout as the signed-in chart: a
- * leadership strip, then boxes packed into columns that fill the width. One line
- * per person: an initial in her colour, first name, role.
+ * leadership strip, then boxes packed into columns that fill the width. Per
+ * person: an initial, first name, role and department, and who she reports to.
  *
- * Only first name, role, department and colour are shown. No identifier of any
+ * Only first name, role, department and the manager's first name are shown. No
+ * per-person colour. No identifier of any
  * kind is rendered, no project and no customer: an engineering box is titled by
  * its lead's first name, role and head-count only. There is no presence.
  */
-
-const accent = (p: ChartPerson) => ({ '--accent': p.color }) as CSSProperties;
 
 function names(c: Copy) {
   const fa = c.lang === 'fa';
@@ -25,22 +23,44 @@ function names(c: Copy) {
 
 function Initial({ p }: { p: ChartPerson }) {
   return (
-    <span className="initial" style={accent(p)} aria-hidden>
+    <span className="initial" aria-hidden>
       {Array.from(p.firstName)[0]}
     </span>
   );
 }
 
-function Line({ p, label, strong }: { p: ChartPerson; label: string; strong?: boolean }) {
+function Line({ p, c, strong }: { p: ChartPerson; c: Copy; strong?: boolean }) {
+  const n = names(c);
   return (
     <>
       <Initial p={p} />
       <span className="line-text">
         <bdi className={strong ? 'line-name strong' : 'line-name'}>{p.firstName}</bdi>
-        <span className="line-role">{label}</span>
+        <span className="line-role">
+          {n.role(p.role)} · {n.department(p.department)}
+        </span>
+        {p.reportsTo ? (
+          <span className="line-reports">
+            {c.reportsTo('')}
+            <bdi>{p.reportsTo}</bdi>
+          </span>
+        ) : null}
       </span>
     </>
   );
+}
+
+/** The snapshot's own time, in the page language's zone, with the zone named. */
+function updatedAt(iso: string, c: Copy): string {
+  return new Date(iso).toLocaleString(c.locale, {
+    timeZone: c.timeZone,
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
 }
 
 export function TeamChart({ model, c }: { model: ChartModel; c: Copy }) {
@@ -55,6 +75,11 @@ export function TeamChart({ model, c }: { model: ChartModel; c: Copy }) {
             <h2 id="chart-title">{c.chartTitle}</h2>
             <p>{c.chartBody}</p>
             <span className="pill">{c.members(num(model.total))}</span>
+            {model.generatedAt ? (
+              <p className="updated" data-testid="chart-updated">
+                <time dateTime={model.generatedAt}>{c.updated(updatedAt(model.generatedAt, c))}</time>
+              </p>
+            ) : null}
           </div>
 
           {model.strip.length ? (
@@ -65,7 +90,7 @@ export function TeamChart({ model, c }: { model: ChartModel; c: Copy }) {
               <ul>
                 {model.strip.map((p, i) => (
                   <li key={`s${i}`} className="chip">
-                    <Line p={p} strong label={p.byDepartment ? n.department(p.department) : n.role(p.role)} />
+                    <Line p={p} c={c} strong />
                   </li>
                 ))}
               </ul>
@@ -95,7 +120,7 @@ export function TeamChart({ model, c }: { model: ChartModel; c: Copy }) {
                         className={p.depth === 0 && box.people.length > 1 ? 'row row-lead' : 'row'}
                         style={p.depth > 1 ? { paddingInlineStart: `${(p.depth - 1) * 0.75 + 0.5}rem` } : undefined}
                       >
-                        <Line p={p} strong={p.depth === 0 && box.people.length > 1} label={n.role(p.role)} />
+                        <Line p={p} c={c} strong={p.depth === 0 && box.people.length > 1} />
                       </li>
                     ))}
                   </ul>

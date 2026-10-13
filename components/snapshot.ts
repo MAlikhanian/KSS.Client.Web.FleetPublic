@@ -4,8 +4,9 @@
  *
  * The snapshot is anonymous and already public-safe at the source: first names,
  * role and department names, a per-response ordinal (`n`) that only links an
- * agent to its manager, a role colour, and activity counts per department and
- * day. It carries no presence field. The ordinal is never rendered; it exists
+ * agent to its manager, and activity counts per department and day. It carries
+ * no presence field. A colour field, if the service still sends one, is ignored:
+ * the page shows no per-agent colour. The ordinal is never rendered; it exists
  * only to build the reporting lines.
  *
  * Anything that does not match is REJECTED as a whole, never partly rendered:
@@ -19,7 +20,6 @@ export interface PublicAgent {
   role: string;
   department: string;
   reportsTo: number | null;
-  color: string;
 }
 
 export interface ActivityBucket {
@@ -31,6 +31,8 @@ export interface ActivityBucket {
 }
 
 export interface Snapshot {
+  /** When the service built this snapshot (ISO 8601, UTC), or null if it did not say. */
+  generatedAt: string | null;
   agents: PublicAgent[];
   departments: string[];
   activity: ActivityBucket[];
@@ -72,12 +74,18 @@ export function parseSnapshot(body: unknown): ParseResult {
     const role = text(a.role);
     const department = text(a.department);
     const reportsTo = a.reportsTo === null || a.reportsTo === undefined ? null : count(a.reportsTo);
-    const color = typeof a.color === 'string' ? a.color.trim() : '';
     if (n === null || firstName === null || role === null || department === null) return { ok: false, reason: 'AGENT_FIELD_INVALID' };
     if (a.reportsTo !== null && a.reportsTo !== undefined && reportsTo === null) return { ok: false, reason: 'AGENT_REPORTSTO_INVALID' };
     if (seen.has(n)) return { ok: false, reason: 'AGENT_ORDINAL_DUPLICATE' };
     seen.add(n);
-    agents.push({ n, firstName, role, department, reportsTo, color });
+    agents.push({ n, firstName, role, department, reportsTo });
+  }
+
+  let generatedAt: string | null = null;
+  if (body.generatedAt !== undefined && body.generatedAt !== null) {
+    const t = typeof body.generatedAt === 'string' ? Date.parse(body.generatedAt) : NaN;
+    if (Number.isNaN(t)) return { ok: false, reason: 'GENERATED_AT_INVALID' };
+    generatedAt = new Date(t).toISOString();
   }
 
   const departmentList = body.departments === undefined ? [] : names(body.departments);
@@ -115,7 +123,7 @@ export function parseSnapshot(body: unknown): ParseResult {
   for (const d of [...agents.map((a) => a.department), ...activity.map((b) => b.department)]) {
     if (d !== null && !departments.includes(d)) departments.push(d);
   }
-  return { ok: true, snapshot: { agents, departments, activity, days } };
+  return { ok: true, snapshot: { generatedAt, agents, departments, activity, days } };
 }
 
 /** Every UTC day from `from` to `to`, inclusive. */
@@ -128,27 +136,13 @@ function daysBetween(from: string, to: string): string[] {
   return out;
 }
 
-/**
- * Colours the page may use. The service sends a NAMED token (the agent's colour
- * on the team's own scheme: "red", "yellow", "cyan", ...). A known token maps to
- * the site's palette, a hex value is allowed as is, and anything else ("default"
- * included) falls back to a neutral colour, so a value from the service can never
- * inject arbitrary CSS.
- */
-const ROLE_TOKENS = new Set(['cyan', 'blue', 'violet', 'purple', 'pink', 'amber', 'yellow', 'red', 'green', 'orange']);
-const TOKEN_ALIAS: Record<string, string> = { purple: 'violet', yellow: 'amber' };
-export function safeColor(value: string): string {
-  const v = value.trim().toLowerCase();
-  if (/^#[0-9a-f]{3}([0-9a-f]{3})?$/.test(v)) return v;
-  if (ROLE_TOKENS.has(v)) return `var(--role-${TOKEN_ALIAS[v] ?? v})`;
-  return 'var(--muted)';
-}
-
 // ── View model ─────────────────────────────────────────────────────────────
 //
 // The same dense layout as the signed-in Fleet chart, public variant:
 //  - A LEADERSHIP STRIP: everyone in a leadership department, and everyone
 //    whose role is a C-level role, whatever their department.
+//  - Every person shows first name, role, department and the first name of
+//    the person they report to. No per-person colour.
 //  - ENGINEERING: one box PER TEAM LEAD. A lead is an engineer whose manager
 //    sits in the strip; her box holds her and everyone reporting to her. The
 //    title is her first name, her role and the count, and nothing else: the
@@ -158,8 +152,8 @@ export function safeColor(value: string): string {
 //  - Every other department is ONE box.
 // Names are compared trimmed and case-insensitively, as the service serves them.
 
-const LEADERSHIP_DEPARTMENTS = new Set(['executive', 'advisory', 'board office', "founder's office", 'executive office']);
-const LEADERSHIP_ROLES = new Set(['ceo', 'coo', 'cto', 'ceo advisor']);
+const LEADERSHIP_DEPARTMENTS = new Set(['executive', 'executive office']);
+const LEADERSHIP_ROLES = new Set(['ceo', 'coo', 'cto', 'cno']);
 const BY_LEAD_DEPARTMENTS = new Set(['engineering']);
 const norm = (s: string) => s.trim().toLowerCase().replace(/’/g, "'");
 
@@ -167,14 +161,10 @@ export interface ChartPerson {
   firstName: string;
   role: string;
   department: string;
-  color: string;
+  /** The first name of the person this one reports to, or null. */
+  reportsTo: string | null;
   /** Nesting under the box's first person: 0 for the lead, 1 for her reports, ... */
   depth: number;
-}
-
-export interface StripPerson extends ChartPerson {
-  /** Label by department instead of role (e.g. an office's assistant). */
-  byDepartment: boolean;
 }
 
 export type ChartBox =
@@ -189,7 +179,8 @@ export interface ChartDepartmentActivity {
 }
 
 export interface ChartModel {
-  strip: StripPerson[];
+  generatedAt: string | null;
+  strip: ChartPerson[];
   boxes: ChartBox[];
   total: number;
   days: string[];
@@ -211,7 +202,7 @@ export function buildChart(s: Snapshot): ChartModel {
     firstName: a.firstName,
     role: a.role,
     department: a.department,
-    color: safeColor(a.color),
+    reportsTo: manager(a)?.firstName ?? null,
     depth,
   });
   const isLeadRole = (a: PublicAgent) => LEADERSHIP_ROLES.has(norm(a.role));
@@ -288,7 +279,8 @@ export function buildChart(s: Snapshot): ChartModel {
   const otherRow = deptActivity(null);
 
   return {
-    strip: stripAgents.map((a) => ({ ...person(a, 0), byDepartment: !isLeadRole(a) })),
+    generatedAt: s.generatedAt,
+    strip: stripAgents.map((a) => person(a, 0)),
     boxes,
     total: s.agents.length,
     days,

@@ -15,12 +15,12 @@ import { fileURLToPath } from 'node:url';
 import { ORDINAL_BASE, PROJECT_CANARY, makeSnapshot, startMock } from './support/mock-snapshot.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { parseSnapshot, safeColor, buildChart } = await import('../components/snapshot.ts');
-const { ROLE_NAMES_FA } = await import('../components/names.ts');
+const { parseSnapshot, buildChart } = await import('../components/snapshot.ts');
+const { ROLE_NAMES_FA, DEPARTMENT_NAMES_FA } = await import('../components/names.ts');
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-// Any of the mock's ordinals as a standalone number (7001..7092).
-const ORDINAL = /(?<![0-9])70(?:0[1-9]|[1-8][0-9]|9[0-2])(?![0-9])/;
+// Any of the mock's ordinals as a standalone number (870001..870103).
+const ORDINAL = /(?<![0-9])870(?:0(?:0[1-9]|[1-9][0-9])|10[0-3])(?![0-9])/;
 const SAMPLE = makeSnapshot('ok');
 const FIRST_NAMES = new Set(SAMPLE.agents.map((a) => a.firstName));
 const ROLE_LABELS = new Set([...SAMPLE.roles, ...Object.values(ROLE_NAMES_FA)]);
@@ -79,7 +79,9 @@ describe('snapshot parser', () => {
   test('the service shape parses, with the 7-day range filled in', () => {
     const r = parseSnapshot(makeSnapshot('ok'));
     assert.equal(r.ok, true);
-    assert.equal(r.snapshot.agents.length, 92);
+    assert.equal(r.snapshot.agents.length, 103);
+    assert.ok(!JSON.stringify(r.snapshot).includes('"color"'), 'the retired colour field is dropped');
+    assert.match(r.snapshot.generatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, 'generatedAt is kept, as ISO UTC');
     assert.ok(!JSON.stringify(r.snapshot).includes(PROJECT_CANARY), 'a field the contract does not have is dropped');
     assert.equal(r.snapshot.days.length, 7);
     assert.ok(r.snapshot.activity.some((b) => b.department === null), 'the grouped "other" rows are kept as served');
@@ -93,6 +95,7 @@ describe('snapshot parser', () => {
       [(b) => (b.agents[0].firstName = ''), 'AGENT_FIELD_INVALID'],
       [(b) => (b.activity.buckets[0].direction = 'up'), 'ACTIVITY_DIRECTION_INVALID'],
       [(b) => (b.activity.from = 'yesterday'), 'ACTIVITY_RANGE_INVALID'],
+      [(b) => (b.generatedAt = 'soon'), 'GENERATED_AT_INVALID'],
     ]) {
       const body = makeSnapshot('ok');
       mutate(body);
@@ -103,23 +106,29 @@ describe('snapshot parser', () => {
     assert.equal(parseSnapshot(null).ok, false);
     assert.equal(parseSnapshot([]).ok, false);
   });
-  test('colour tokens map to the palette; anything else is neutral and can never inject CSS', () => {
-    assert.equal(safeColor('yellow'), 'var(--role-amber)');
-    assert.equal(safeColor('purple'), 'var(--role-violet)');
-    assert.equal(safeColor('CYAN'), 'var(--role-cyan)');
-    assert.equal(safeColor('default'), 'var(--muted)');
-    assert.equal(safeColor('red;background:url(//x)'), 'var(--muted)');
-    assert.equal(safeColor('#2f5bd3'), '#2f5bd3');
+  test('generatedAt: optional; missing means null, a valid time is kept as ISO UTC', () => {
+    const body = makeSnapshot('ok');
+    delete body.generatedAt;
+    assert.equal(parseSnapshot(body).snapshot.generatedAt, null);
+    body.generatedAt = '2026-10-12T23:10:05.123Z';
+    assert.equal(parseSnapshot(body).snapshot.generatedAt, '2026-10-12T23:10:05.123Z');
   });
-  test('the chart model: strip of 8, one box per team lead, every agent placed, no ordinal', () => {
+  test('the chart model: strip of 6 (CEO, COO, CTO, CNO, Executive Office), boxes per team lead, every agent placed, no ordinal, no colour', () => {
     const m = buildChart(parseSnapshot(makeSnapshot('ok')).snapshot);
-    assert.equal(m.strip.length, 8, 'leadership departments plus the C-level roles');
-    assert.ok(m.strip.some((p) => p.role === 'CTO'), 'the CTO is in the strip');
+    assert.equal(m.strip.length, 6, 'the C-level roles plus the Executive Office');
+    for (const role of ['CEO', 'COO', 'CTO', 'CNO']) assert.ok(m.strip.some((p) => p.role === role), 'the ' + role + ' is in the strip');
+    assert.ok(!m.boxes.some((b) => b.people.some((p) => p.role === 'CNO')), 'the CNO is not inside the Network box');
+    assert.ok(m.boxes.some((b) => b.kind === 'department' && b.department === 'Network' && b.size === 10), 'the Network box holds the 10 experts');
+    assert.ok(!JSON.stringify(m).includes('color'), 'no colour in the view model');
+    const people = [...m.strip, ...m.boxes.flatMap((b) => b.people)];
+    assert.equal(people.filter((p) => p.reportsTo === null).length, 1, 'only the CEO reports to nobody');
+    assert.ok(people.every((p) => p.reportsTo === null || FIRST_NAMES.has(p.reportsTo)), 'reports-to is a first name');
+    assert.ok(people.every((p) => p.department.length > 0), 'every person carries a department');
     const lead = m.boxes.filter((b) => b.kind === 'lead');
     assert.equal(lead.length, 17, 'one box per Tech Lead');
     assert.ok(lead.every((b) => b.lead.role === 'Tech Lead'));
     assert.ok(!m.boxes.some((b) => b.kind === 'department' && b.department === 'Engineering'), 'no leftover Engineering box when every engineer has a lead');
-    assert.equal(m.strip.length + m.boxes.reduce((acc, b) => acc + b.size, 0), 92, 'every agent placed exactly once');
+    assert.equal(m.strip.length + m.boxes.reduce((acc, b) => acc + b.size, 0), 103, 'every agent placed exactly once');
     assert.doesNotMatch(JSON.stringify(m), ORDINAL);
     assert.ok(m.other, 'the "other" row is present');
   });
@@ -160,9 +169,33 @@ describe('served pages against the snapshot service, every state', () => {
       const { status, html } = await page(route);
       assert.equal(status, 200);
       assert.equal(chartState(html), 'ok');
-      for (const a of [SAMPLE.agents[0], SAMPLE.agents[20], SAMPLE.agents[91]]) assert.ok(html.includes(a.firstName), `${route} shows ${a.firstName}`);
+      for (const a of [SAMPLE.agents[0], SAMPLE.agents[20], SAMPLE.agents[102]]) assert.ok(html.includes(a.firstName), `${route} shows ${a.firstName}`);
       assert.ok(html.includes(route === '/' ? 'پشتیبانی مشتریان' : 'Customer Support'), `${route} names departments in its language`);
       assert.ok(html.includes('class="activity-card'), `${route} shows the activity cards`);
+    }
+  });
+
+  test('rows: role and department, a reports-to line, the update time; no per-person colour; fa translates every name', async () => {
+    mock.state.mode = 'ok';
+    for (const route of ['/', '/en']) {
+      const { html } = await page(route);
+      const fa = route === '/';
+      const rows = [...html.matchAll(/class="line-role">([\s\S]*?)<\/span>/g)].map((m) => stripTags(m[1]));
+      assert.equal(rows.length, 103, route + ': every person has a role line');
+      assert.ok(rows.every((r) => r.includes(' · ')), route + ': each role line carries the department');
+      assert.equal((html.match(/class="line-reports"/g) ?? []).length, 102, route + ': everyone but the CEO has a reports-to line');
+      assert.ok(html.includes(fa ? 'گزارش به ' : 'Reports to '), route + ': reports-to wording');
+      assert.match(html, /data-testid="chart-updated"><time dateTime="\d{4}-\d{2}-\d{2}T/, route + ': the update time is shown');
+      assert.ok(html.includes(fa ? 'به وقت تهران' : 'UTC'), route + ': the update time names its zone');
+      assert.doesNotMatch(html, /style="--/, route + ': no inline colour variable');
+      assert.ok(!html.includes('role-'), route + ': no role colour class or variable');
+      if (fa) {
+        for (const [en, faName] of [['CNO', ROLE_NAMES_FA.CNO], ['Network Expert', ROLE_NAMES_FA['Network Expert']], ['Network', DEPARTMENT_NAMES_FA.Network]]) {
+          assert.ok(faName, 'a Persian name exists for ' + en);
+          assert.ok(html.includes(faName), 'fa shows ' + faName);
+        }
+        assert.deepEqual(rows.filter((r) => /[A-Za-z]/.test(r)), [], 'fa: no role or department left in English');
+      }
     }
   });
 
@@ -303,5 +336,5 @@ describe('not configured (a build or a local run with no service URL)', () => {
   });
 });
 
-// Keep the base ordinal in view: the ORDINAL needle is written for 7001..7036.
-assert.equal(ORDINAL_BASE, 7001);
+// Keep the base ordinal in view: the ORDINAL needle is written for 870001..870103.
+assert.equal(ORDINAL_BASE, 870001);
