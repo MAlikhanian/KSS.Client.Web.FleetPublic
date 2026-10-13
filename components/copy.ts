@@ -46,8 +46,7 @@ export interface Copy {
   teamLead: string;
   /** "+3" on an avatar group. */
   more: (n: number) => string;
-  activeNow: string;
-  /** "active 5 minutes ago", built from Intl.RelativeTimeFormat output. */
+  /** "Last activity: 5 minutes ago", built from Intl.RelativeTimeFormat output. Never "online" or "active". */
   lastActive: (relative: string) => string;
   sparkLabel: (values: string) => string;
   /** A day the service suppresses (fewer than 3 messages) arrives as 0: never shown as "none". */
@@ -96,14 +95,13 @@ export const COPY: Record<Lang, Copy> = {
     statAgents: 'عامل‌ها',
     statTeams: 'تیم‌های مهندسی',
     statMessages: 'پیام‌ها در هفت روز گذشته',
-    statActive: 'فعال در ۱۵ دقیقهٔ گذشته',
+    statActive: 'آخرین فعالیت در ۱۵ دقیقهٔ گذشته',
     cLevel: 'مدیران ارشد',
     executiveOffice: 'دفتر اجرایی',
     engineeringBody: 'هر تیم مهندسی با عنوان کارش، سرپرست و اعضایش.',
     departmentsBody: 'واحدهای دیگر، هر کدام با اعضایش.',
     teamLead: 'سرپرست',
     more: (n) => `+${n.toLocaleString('fa-IR')}`,
-    activeNow: 'فعال',
     lastActive: (relative) => `آخرین فعالیت: ${relative}`,
     sparkLabel: (values) => `پیام‌ها در هفت روز گذشته، از قدیم به جدید: ${values}`,
     underThree: 'کمتر از ۳',
@@ -148,15 +146,14 @@ export const COPY: Record<Lang, Copy> = {
     statAgents: 'Agents',
     statTeams: 'Engineering teams',
     statMessages: 'Messages, last 7 days',
-    statActive: 'Active in the last 15 minutes',
+    statActive: 'Last activity in the past 15 minutes',
     cLevel: 'C-level',
     executiveOffice: 'Executive Office',
     engineeringBody: 'Every engineering team by what it works on, with its lead and members.',
     departmentsBody: 'The other departments, each with its members.',
     teamLead: 'Lead',
     more: (n) => `+${n}`,
-    activeNow: 'Active',
-    lastActive: (relative) => `Active ${relative}`,
+    lastActive: (relative) => `Last activity: ${relative}`,
     sparkLabel: (values) => `Messages over the last seven days, oldest first: ${values}`,
     underThree: 'fewer than 3',
     atLeast: (n) => `at least ${n}`,

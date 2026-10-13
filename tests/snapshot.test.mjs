@@ -257,7 +257,12 @@ describe('served pages against the snapshot service, every state', () => {
       assert.equal(titles.filter((p) => p.length === 2).length, published, route + ': a titled team is "title · count"');
       assert.equal(titles.filter((p) => p.length === 3).length, 17 - published, route + ': an untitled team keeps "lead · role · count"');
       assert.equal((html.match(/data-testid="team-lead"/g) ?? []).length, published, route + ': a titled card still names its lead');
-      assert.equal((html.match(/data-testid="last-active"/g) ?? []).length, 103, route + ': every person shows when she was last active');
+      assert.equal((html.match(/data-testid="last-active"/g) ?? []).length, 103, route + ': every person shows the time of her last activity');
+      const lines = [...html.matchAll(/data-testid="last-active">([^<]*)</g)].map((m) => m[1]);
+      assert.equal(lines.length, 103, route + ': each last-activity entry is one plain line, no badge inside');
+      assert.ok(lines.every((t) => t.startsWith(lang === 'fa' ? 'آخرین فعالیت: ' : 'Last activity: ')), route + ': every line reads "last activity"');
+      assert.ok(html.includes(lang === 'fa' ? 'آخرین فعالیت در ۱۵ دقیقهٔ گذشته' : 'Last activity in the past 15 minutes'), route + ': the tile title says last activity');
+      assert.doesNotMatch(html, lang === 'fa' ? />فعال</ : />(Active|Online|online)</, route + ': no online or active pill');
       assert.ok((html.match(/data-testid="team-activity"/g) ?? []).length >= 17, route + ': team graphs');
       assert.equal((html.match(/data-testid="stat"/g) ?? []).length, 4, route + ': the active-now tile');
       assert.ok(!html.includes(PROJECT_CANARY), route + ': no internal project name');

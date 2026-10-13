@@ -1,6 +1,6 @@
 import type { Copy } from './copy';
 import { DEPARTMENT_NAMES_FA, ROLE_NAMES_FA } from './names';
-import { ACTIVE_WINDOW_MS, type ChartBox, type ChartModel, type ChartPerson } from './snapshot';
+import { type ChartBox, type ChartModel, type ChartPerson } from './snapshot';
 import { Avatar, AvatarGroup } from './ui/avatar';
 import { Badge } from './ui/badge';
 import { Card, CardBody, CardHeader } from './ui/card';
@@ -10,7 +10,7 @@ import { Stat } from './ui/stat';
 /**
  * The public team dashboard: stat tiles, the leadership card, one card per engineering team, one per other
  * department, and the activity cards. Per person: an initial, first name, role and department, who she
- * reports to, and (when the service sends it) when she was last active. No identifier of any kind, no
+ * reports to, and (when the service sends it) the time of her last activity. No identifier of any kind, no
  * per-person colour, no customer: a team is titled by its PUBLIC title from the service, or by its lead.
  */
 
@@ -49,18 +49,12 @@ function relative(iso: string, nowIso: string | null, c: Copy): string {
   return rtf.format(-Math.round(h / 24), 'day');
 }
 
+/** The time of the last activity, the same muted line for everyone: it is a time, never an online state. */
 function LastActive({ p, now, c }: { p: ChartPerson; now: string | null; c: Copy }) {
   if (!p.lastActiveAt) return null;
-  const recent = (now ? Date.parse(now) : Date.now()) - Date.parse(p.lastActiveAt) <= ACTIVE_WINDOW_MS;
   return (
-    <span className="basis-full" data-testid="last-active">
-      {recent ? (
-        <Badge tone="success" dot>
-          {c.activeNow}
-        </Badge>
-      ) : (
-        <span className="text-xs text-muted-foreground">{c.lastActive(relative(p.lastActiveAt, now, c))}</span>
-      )}
+    <span className="basis-full text-xs text-muted-foreground" data-testid="last-active">
+      {c.lastActive(relative(p.lastActiveAt, now, c))}
     </span>
   );
 }
