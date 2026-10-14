@@ -406,7 +406,7 @@ describe('served pages against the snapshot service, every state', { timeout: 2_
       assert.ok(humans[0].includes('srcSet="/avatars/founder-mohammad.webp 1x, /avatars/founder-mohammad@2x.webp 2x"'), route + ': the founder photo, 1x and 2x');
       // The old spelling of the surname, written as escapes so the source itself never carries it.
       if (fa) assert.ok(!html.includes('\u063a\u06cc\u0627\u062b\u06cc') && html.includes('بابک قیاسی'), '/: the Persian spelling «بابک قیاسی», never the old one');
-      assert.ok(humans[1].includes('data-testid="person-icon"'), route + ': the chairman shows the icon until his photo is published');
+      assert.ok(humans[1].includes('srcSet="/avatars/partner-mahmoud.webp 1x, /avatars/partner-mahmoud@2x.webp 2x"'), route + ': the chairman photo, 1x and 2x');
       assert.ok(humans[2].includes('srcSet="/avatars/partner-amir.webp 1x, /avatars/partner-amir@2x.webp 2x"'), route + ': the human CTO photo, 1x and 2x');
       assert.ok(humans[3].includes('src="/avatars/partner-babak.webp"'), route + ': the human CNO photo');
       // Paired with: both sides, in words, at every width.
@@ -514,6 +514,7 @@ describe('served pages against the snapshot service, every state', { timeout: 2_
       for (const p of ROOM_LABELS.filter((x) => x.kind === 'person')) assert.ok(chips.some((ch) => stripTags(ch) === p.name[lang]), route + ': partner ' + p.name[lang]);
       assert.ok(chips.every((ch) => !ch.includes('ai-badge') && !/AI agent|عامل هوش مصنوعی/.test(ch)), route + ': no AI badge or AI label on a partner');
       assert.ok(chips.some((ch) => ch.includes('src="/avatars/partner-amir.webp"')), route + ': a published partner photo is used');
+      assert.ok(chips.some((ch) => ch.includes('src="/avatars/partner-mahmoud.webp"')), route + ': the chairman room chip uses the same photo as his box');
       assert.ok(chips.some((ch) => ch.includes('data-testid="person-icon"')), route + ': the person icon until a photo is published');
       // The Persian reset times are joined with «،», never a Latin comma.
       if (lang === 'fa') {
