@@ -240,19 +240,19 @@ const HUMANS: Record<'fa' | 'en', { top: Human[]; second: Human[]; paired: strin
   fa: {
     sep: '، ',
     top: [
-      { name: 'محمد', role: 'بنیان‌گذار' },
+      { name: 'محمد علیخانیان', role: 'بنیان‌گذار', photo: 'founder-mohammad' },
       { name: 'محمود دانش', role: 'رئیس هیئت‌مدیره', photo: 'partner-mahmoud' },
     ],
     second: [
       { name: 'امیر مرتضوی', role: 'مدیر ارشد فناوری', photo: 'partner-amir', pair: 'cto' },
-      { name: 'بابک غیاثی', role: 'مدیر ارشد شبکه', photo: 'partner-babak', pair: 'cno' },
+      { name: 'بابک قیاسی', role: 'مدیر ارشد شبکه', photo: 'partner-babak', pair: 'cno' },
     ],
     paired: 'همراه با',
   },
   en: {
     sep: ', ',
     top: [
-      { name: 'Mohammad', role: 'Founder' },
+      { name: 'Mohammad Alikhanian', role: 'Founder', photo: 'founder-mohammad' },
       { name: 'Mahmoud Danesh', role: 'Chairman', photo: 'partner-mahmoud' },
     ],
     second: [

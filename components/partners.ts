@@ -15,7 +15,7 @@ export interface RoomLabel {
 
 export const ROOM_LABELS: RoomLabel[] = [
   { label: 'Amir Mortazavi', kind: 'person', photo: 'partner-amir', name: { fa: 'امیر مرتضوی', en: 'Amir Mortazavi' } },
-  { label: 'Babak Ghiasi', kind: 'person', photo: 'partner-babak', name: { fa: 'بابک غیاثی', en: 'Babak Ghiasi' } },
+  { label: 'Babak Ghiasi', kind: 'person', photo: 'partner-babak', name: { fa: 'بابک قیاسی', en: 'Babak Ghiasi' } },
   { label: 'Matin', kind: 'person', photo: 'partner-matin', name: { fa: 'متین', en: 'Matin' } },
   { label: 'Mahmoud Danesh', kind: 'person', photo: 'partner-mahmoud', name: { fa: 'محمود دانش', en: 'Mahmoud Danesh' } },
   { label: 'Bybit trading', kind: 'label', name: { fa: 'معاملات Bybit', en: 'Bybit trading' } },

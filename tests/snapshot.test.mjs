@@ -396,14 +396,16 @@ describe('served pages against the snapshot service, every state', { timeout: 2_
       const fa = route === '/';
       const humans = [...html.matchAll(/<section[^>]*data-testid="human-node"[^>]*>([\s\S]*?)<\/section>/g)].map((m) => m[1]);
       const want = fa
-        ? [['محمد', 'بنیان‌گذار'], ['محمود دانش', 'رئیس هیئت‌مدیره'], ['امیر مرتضوی', 'مدیر ارشد فناوری'], ['بابک غیاثی', 'مدیر ارشد شبکه']]
-        : [['Mohammad', 'Founder'], ['Mahmoud Danesh', 'Chairman'], ['Amir Mortazavi', 'CTO'], ['Babak Ghiasi', 'CNO']];
+        ? [['محمد علیخانیان', 'بنیان‌گذار'], ['محمود دانش', 'رئیس هیئت‌مدیره'], ['امیر مرتضوی', 'مدیر ارشد فناوری'], ['بابک قیاسی', 'مدیر ارشد شبکه']]
+        : [['Mohammad Alikhanian', 'Founder'], ['Mahmoud Danesh', 'Chairman'], ['Amir Mortazavi', 'CTO'], ['Babak Ghiasi', 'CNO']];
       assert.equal(humans.length, 4, route + ': four people in the human management');
       want.forEach(([name, role], i) => {
         assert.ok(humans[i].includes(`aria-label="${name}${fa ? '، ' : ', '}${role}"`), route + ': ' + name + ' is named with the role');
         assert.ok(!humans[i].includes('ai-badge') && !/AI agent|عامل هوش مصنوعی/.test(humans[i]) && !humans[i].includes('class="la"'), route + ': ' + name + ' is a person: no AI badge, no AI label, no activity');
       });
-      assert.ok(humans[0].includes('data-testid="person-icon"'), route + ': the founder keeps the person icon');
+      assert.ok(humans[0].includes('srcSet="/avatars/founder-mohammad.webp 1x, /avatars/founder-mohammad@2x.webp 2x"'), route + ': the founder photo, 1x and 2x');
+      // The old spelling of the surname, written as escapes so the source itself never carries it.
+      if (fa) assert.ok(!html.includes('\u063a\u06cc\u0627\u062b\u06cc') && html.includes('بابک قیاسی'), '/: the Persian spelling «بابک قیاسی», never the old one');
       assert.ok(humans[1].includes('data-testid="person-icon"'), route + ': the chairman shows the icon until his photo is published');
       assert.ok(humans[2].includes('srcSet="/avatars/partner-amir.webp 1x, /avatars/partner-amir@2x.webp 2x"'), route + ': the human CTO photo, 1x and 2x');
       assert.ok(humans[3].includes('src="/avatars/partner-babak.webp"'), route + ': the human CNO photo');
