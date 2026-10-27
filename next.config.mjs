@@ -1,5 +1,11 @@
 /** @type {import('next').NextConfig} */
 
+import { readFileSync } from 'node:fs';
+
+// The one switch for report pages (/reports/*): unlisted by default. The pages carry the same flag in their meta
+// robots tag and the sitemap reads it too; changing it is a deliberate commit and rebuild.
+const REPORTS_LISTED = JSON.parse(readFileSync(new URL('./components/reports/listing.json', import.meta.url), 'utf8')).listed === true;
+
 // The public Fleet site. It owns its host, so there is no basePath, and it is
 // never composed into the Shell. It holds no session and no secret.
 
@@ -40,6 +46,8 @@ const nextConfig = {
       { source: '/:path*', headers: SECURITY_HEADERS },
       // Avatar photos change rarely; a replaced file may be served from a cache for up to a day.
       { source: '/avatars/:file*', headers: [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }] },
+      // Report pages are unlisted: kept out of search indexes. Only /reports/*; the rest of the site stays indexable.
+      ...(REPORTS_LISTED ? [] : [{ source: '/reports/:path*', headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }] }]),
     ];
   },
 };

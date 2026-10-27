@@ -11,6 +11,10 @@
 #   - Any Secret: the app needs none. There is no NEXTAUTH_SECRET here, and
 #     there must never be one.
 #
+#  OPTIONAL: the ConfigMap kss-client-web-fleet-public-reports (keys report.fa.md
+#  and report.data.json), the content of a report page. It is applied separately,
+#  never committed; without it the report pages are 404 and the site runs as usual.
+#
 #  NEEDED IN THE NAMESPACE BEFORE THE FIRST ROLLOUT:
 #   - docker-secret (image pull). Secrets are namespace-scoped. Without it the
 #     pods sit in ImagePullBackOff.
@@ -121,6 +125,12 @@ spec:
           periodSeconds: 5
           timeoutSeconds: 5
           failureThreshold: 24
+        # Report pages (/reports/*) read their content from this read-only mount at request time. No subPath, so an
+        # updated ConfigMap reaches the pod without a restart.
+        volumeMounts:
+        - name: reports
+          mountPath: /etc/kss-reports
+          readOnly: true
         securityContext:
           allowPrivilegeEscalation: false
           runAsNonRoot: true
@@ -131,6 +141,20 @@ spec:
             drop: [ALL]
       restartPolicy: Always
       terminationGracePeriodSeconds: 30
+      # One subdirectory per report; its name is arbitrary, the page finds a report by the slug inside its data file.
+      # optional: a missing ConfigMap mounts an empty directory, the pod starts, and every /reports/* is a 404.
+      volumes:
+      - name: reports
+        projected:
+          sources:
+          - configMap:
+              name: kss-client-web-fleet-public-reports
+              optional: true
+              items:
+              - key: report.fa.md
+                path: r1/report.fa.md
+              - key: report.data.json
+                path: r1/report.data.json
 ---
 apiVersion: v1
 kind: Service
