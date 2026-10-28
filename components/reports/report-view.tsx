@@ -6,6 +6,7 @@ import { ReportChart } from './charts';
 import { faNumber, tehranDayKey, tehranDayLong, tehranTime } from './format';
 import type { Report } from './load';
 import { type Block, type Inline, type List, parseInline } from './markdown';
+import { statusOf } from './status';
 import type { Figure, TimelineItem } from './schema';
 
 /**
@@ -36,6 +37,16 @@ function InlineText({ text }: { text: string }) {
         <code key={i} dir="ltr" className="rpt-code">
           {p.v}
         </code>
+      ) : p.t === 'status' ? (
+        p.bold ? (
+          <strong key={i} className="rpt-status-word" data-tone={p.tone}>
+            {p.v}
+          </strong>
+        ) : (
+          <span key={i} className="rpt-status" data-tone={p.tone}>
+            {p.v}
+          </span>
+        )
       ) : (
         <strong key={i}>{render(p.v)}</strong>
       ),
@@ -60,7 +71,7 @@ function Figures({ figures }: { figures: Figure[] }) {
   return (
     <section aria-label={UI.figures} className="rpt-figures" data-testid="report-figures">
       {figures.map((f, i) => (
-        <div key={i} className="rpt-figure">
+        <div key={i} className="rpt-figure" data-accent={i % 5}>
           <span className="rpt-figure-value">
             {faNumber(f.value)}
             {f.unit ? <span className="rpt-figure-unit"> {f.unit}</span> : null}
@@ -114,6 +125,19 @@ function BlockView({ b, report }: { b: Block; report: Report }) {
   switch (b.t) {
     case 'h': {
       const Tag = (['h1', 'h2', 'h3', 'h4'] as const)[b.level - 1];
+      const num = b.level === 2 ? /^([0-9۰-۹]{1,3})[.)]\s+(.+)$/.exec(b.text) : null;
+      if (num) {
+        const n = Number(num[1].replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))));
+        return (
+          <Tag className="rpt-h2 rpt-h2-numbered" data-accent={n % 5}>
+            <span className="rpt-h-num" aria-hidden>
+              {num[1]}
+            </span>
+            <span className="sr-only">{num[1]}. </span>
+            <InlineText text={num[2]} />
+          </Tag>
+        );
+      }
       return (
         <Tag className={`rpt-h${b.level}`}>
           <InlineText text={b.text} />
@@ -154,11 +178,21 @@ function BlockView({ b, report }: { b: Block; report: Report }) {
             <tbody>
               {b.rows.map((r, i) => (
                 <tr key={i}>
-                  {b.head.map((_, j) => (
-                    <td key={j}>
-                      <InlineText text={r[j] ?? ''} />
-                    </td>
-                  ))}
+                  {b.head.map((_, j) => {
+                    const cell = r[j] ?? '';
+                    const tone = statusOf(cell.replace(/^\*\*(.*)\*\*$/, '$1'));
+                    return (
+                      <td key={j}>
+                        {tone ? (
+                          <span className="rpt-pill" data-tone={tone}>
+                            {cell.replace(/^\*\*(.*)\*\*$/, '$1')}
+                          </span>
+                        ) : (
+                          <InlineText text={cell} />
+                        )}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -175,7 +209,7 @@ function BlockView({ b, report }: { b: Block; report: Report }) {
       return <Timeline items={report.data.timeline} />;
     case 'container':
       return (
-        <section className={b.kind === 'opening' ? 'rpt-opening' : 'rpt-closing'} data-testid={`report-${b.kind}`}>
+        <section className={`rpt-${b.kind}`} data-testid={`report-${b.kind}`}>
           {b.blocks.map((x, i) => (
             <BlockView key={i} b={x} report={report} />
           ))}
@@ -206,7 +240,7 @@ function withDefaults(blocks: Block[]): Block[] {
 export function ReportView({ report }: { report: Report }) {
   const blocks = withDefaults(report.markdown.blocks);
   return (
-    <div className="rpt-page">
+    <div className="rpt-page rpt-bg">
       <header className="rpt-top">
         <Link href="/" className="rpt-brand">
           {/* eslint-disable-next-line @next/next/no-img-element -- the site's own icon, served from this host */}

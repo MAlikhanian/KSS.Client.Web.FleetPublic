@@ -843,3 +843,169 @@
     line-height: 1.9;
   }
 }
+
+/*
+ * Report colour and background. A faint technical grid with a soft glow sits behind the page; the reading column
+ * keeps a near-solid ground so text contrast never depends on the pattern. Accents rotate through the site's
+ * department colours; status colours come from the theme's success, warning and danger tokens, so both themes keep
+ * readable contrast.
+ */
+@layer components {
+  .rpt-bg {
+    --grid: color-mix(in srgb, var(--primary) 9%, transparent);
+    --glow: color-mix(in srgb, var(--primary) 14%, transparent);
+    --glow-2: color-mix(in srgb, var(--dept-network) 10%, transparent);
+    background-color: var(--background);
+    background-image:
+      radial-gradient(60rem 28rem at 85% -6rem, var(--glow), transparent 70%),
+      radial-gradient(48rem 24rem at 5% 30rem, var(--glow-2), transparent 70%),
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size:
+      100% 100%,
+      100% 100%,
+      32px 32px,
+      32px 32px;
+  }
+  .rpt-bg .rpt-main {
+    background: color-mix(in srgb, var(--background) 90%, transparent);
+  }
+  @media (width >= 64rem) {
+    .rpt-bg .rpt-main {
+      margin-block: 1.5rem;
+      border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+      border-radius: var(--radius);
+      box-shadow: 0 1px 24px color-mix(in srgb, var(--primary) 6%, transparent);
+    }
+  }
+
+  /* Accent colours, chosen by data-accent on a heading or a figure card. */
+  [data-accent="0"] {
+    --acc: var(--dept-engineering);
+  }
+  [data-accent="1"] {
+    --acc: var(--dept-network);
+  }
+  [data-accent="2"] {
+    --acc: var(--dept-executive);
+  }
+  [data-accent="3"] {
+    --acc: var(--dept-support);
+  }
+  [data-accent="4"] {
+    --acc: var(--warning);
+  }
+
+  /* A numbered section heading: its number in a coloured badge, and a side bar in the same colour. */
+  .rpt-h2-numbered {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    border-bottom-color: color-mix(in srgb, var(--acc) 35%, var(--border));
+  }
+  .rpt-h-num {
+    display: inline-grid;
+    place-items: center;
+    min-width: 2rem;
+    height: 2rem;
+    flex-shrink: 0;
+    border-radius: 0.5rem;
+    background: var(--acc);
+    padding-inline: 0.375rem;
+    color: #fff;
+    font-size: var(--text-base);
+    font-weight: 800;
+  }
+
+  /* KPI cards: the number in its card's colour, with a matching top edge. */
+  .rpt-figure[data-accent] {
+    border-top: 3px solid var(--acc);
+  }
+  .rpt-figure[data-accent] .rpt-figure-value {
+    color: var(--acc);
+  }
+
+  /* Status colours. */
+  [data-tone="ok"] {
+    --tone: var(--success);
+  }
+  [data-tone="progress"] {
+    --tone: var(--warning);
+  }
+  [data-tone="bad"] {
+    --tone: var(--danger);
+  }
+  .rpt-status {
+    border-radius: 0.375rem;
+    background: color-mix(in srgb, var(--tone) 13%, transparent);
+    padding: 0 0.3rem;
+    color: var(--tone);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .rpt-status-word {
+    color: var(--tone);
+  }
+  .rpt-pill {
+    display: inline-block;
+    border: 1px solid color-mix(in srgb, var(--tone) 35%, transparent);
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--tone) 13%, transparent);
+    padding: 0 0.6rem;
+    color: var(--tone);
+    font-weight: 700;
+    line-height: 1.7;
+    white-space: nowrap;
+  }
+
+  /* Tables: a tinted header row and zebra striping. */
+  .rpt-bg .rpt-table thead th {
+    background: color-mix(in srgb, var(--primary) 13%, var(--card));
+    color: var(--foreground);
+  }
+  .rpt-table tbody tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--muted) 65%, transparent);
+  }
+  .rpt-table-wrap {
+    background: var(--card);
+  }
+
+  /* Tinted callout boxes, by kind: warning, information, good news. */
+  .rpt-callout-warn,
+  .rpt-callout-info,
+  .rpt-callout-ok {
+    margin: 0 0 1.25rem;
+    border-inline-start: 4px solid var(--tone);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--tone) 9%, var(--card));
+    padding: 0.875rem 1.125rem 0.25rem;
+  }
+  .rpt-callout-warn {
+    --tone: var(--warning);
+  }
+  .rpt-callout-info {
+    --tone: var(--primary);
+  }
+  .rpt-callout-ok {
+    --tone: var(--success);
+  }
+  .rpt-callout-warn .rpt-h2,
+  .rpt-callout-info .rpt-h2,
+  .rpt-callout-ok .rpt-h2,
+  .rpt-callout-warn .rpt-h3,
+  .rpt-callout-info .rpt-h3,
+  .rpt-callout-ok .rpt-h3 {
+    margin-top: 0.25rem;
+    border-bottom: 0;
+    color: var(--tone);
+  }
+  /* The ordinary "> " callout takes the information tint too, so explanations read as one family. */
+  .rpt-bg .rpt-callout {
+    border-inline-start-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 8%, var(--card));
+  }
+  .rpt-bg .rpt-opening {
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--primary) 12%, var(--card)), color-mix(in srgb, var(--dept-network) 8%, var(--card)));
+  }
+}

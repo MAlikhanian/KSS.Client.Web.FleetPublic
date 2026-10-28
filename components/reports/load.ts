@@ -94,7 +94,7 @@ function build(dirs: string[]): Map<string, Report> {
     }
     const markdown = parseReportMarkdown(md);
     if (parsed.data.dropped) console.error(`[fleet-public] report ${slug}: ${parsed.data.dropped} malformed data item(s) dropped`);
-    if (markdown.containerProblem) console.error(`[fleet-public] report ${slug}: container markers ignored (${markdown.containerProblem})`);
+    if (markdown.containerProblems.length) console.error(`[fleet-public] report ${slug}: container markers ignored (${markdown.containerProblems.join(', ')})`);
     found.set(slug, { slug, markdown, data: parsed.data });
   }
   return found;

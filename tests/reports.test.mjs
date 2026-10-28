@@ -16,6 +16,7 @@ register('./support/resolve-ts.mjs', import.meta.url);
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { parseReportMarkdown, parseInline, splitRow } = await import('../components/reports/markdown.ts');
+const { statusOf } = await import('../components/reports/status.ts');
 const { parseReportData } = await import('../components/reports/schema.ts');
 const { faDigits, faNumber, tehranDay, tehranDayLong, tehranTime } = await import('../components/reports/format.ts');
 
@@ -33,12 +34,27 @@ A paragraph with item 42 and \`code 7\` and **bold text**.
 
 > A callout line.
 
-## Section one
+## 1. Section one
 
 | Column A | Column B |
 |---|---|
 | value 1 | \`a|b\` |
 | value 2 | **strong** |
+| value 3 | تأییدشده |
+
+A neutral sentence (باز، note) and another (مشکوک) and a **رفع‌نشده** word.
+
+:::callout-warn
+A neutral warning box.
+:::
+
+:::callout-info
+A neutral information box.
+:::
+
+:::callout-ok
+A neutral good-news box.
+:::
 
 - first item
   - nested item
@@ -119,9 +135,10 @@ describe('the Markdown subset', () => {
     assert.ok(r.blocks.some((b) => b.t === 'p' && b.text === '<script>alert(1)</script>'));
   });
 
-  test('container rules: each violation is reported and the markers are not honoured', () => {
+  test('container rules: each violation is reported, its markers dropped, never shown raw', () => {
     const cases = {
       NESTED: ':::opening\n:::closing\n:::\n:::',
+      UNKNOWN_KIND: ':::callout-danger\nkept text\n:::',
       UNTERMINATED: ':::opening\ntext',
       REPEATED: ':::opening\na\n:::\n:::opening\nb\n:::',
       OPENING_NOT_FIRST: 'text first\n\n:::opening\na\n:::',
@@ -130,12 +147,40 @@ describe('the Markdown subset', () => {
       MALFORMED_MARKER: '  :::opening\na\n:::',
       UNOPENED_END: 'a\n:::',
     };
+    const text = (bs) => JSON.stringify(bs);
     for (const [problem, md] of Object.entries(cases)) {
       const r = parseReportMarkdown(md);
       assert.equal(r.containerProblem, problem, problem);
-      assert.ok(!r.blocks.some((b) => b.t === 'container'), problem + ': no container block');
+      assert.ok(!text(r.blocks).includes(':::'), problem + ': no marker line reaches the page');
+      const containers = r.blocks.filter((b) => b.t === 'container').length;
+      assert.equal(containers, problem === 'REPEATED' ? 1 : 0, problem + ': only valid blocks stay containers');
     }
+    assert.ok(text(parseReportMarkdown(cases.UNKNOWN_KIND).blocks).includes('kept text'), 'an unknown kind keeps its content as ordinary text');
     assert.equal(parseReportMarkdown(':::opening\na\n:::\n\nbody\n\n:::closing\nb\n:::\n').containerProblem, null, 'control: a valid pair passes');
+  });
+});
+
+describe('callouts and status colours', () => {
+  test('the three callout kinds anywhere, alongside the statements', () => {
+    const r = parseReportMarkdown(MD);
+    assert.deepEqual(
+      r.blocks.filter((b) => b.t === 'container').map((b) => b.kind),
+      ['opening', 'callout-warn', 'callout-info', 'callout-ok', 'closing'],
+    );
+    assert.deepEqual(r.containerProblems, []);
+  });
+
+  test('a status word is coloured only where it is unmistakably a status', () => {
+    const parts = parseInline('a (تأییدشده) b (باز، note) c (other) **مشکوک** **plain** d');
+    const statuses = parts.filter((p) => p.t === 'status').map((p) => [p.tone, p.bold]);
+    assert.deepEqual(statuses, [['ok', false], ['bad', false], ['progress', true]]);
+    assert.ok(parts.some((p) => p.t === 'bold'), 'an ordinary bold span stays bold');
+    // Inside an ordinary sentence, or not opening the note, nothing is guessed.
+    assert.equal(parseInline('the door is باز now').filter((p) => p.t === 'status').length, 0);
+    assert.equal(parseInline('(time: مشکوک)').filter((p) => p.t === 'status').length, 0);
+    assert.equal(parseInline('(تأییدشده در جای دیگر)').filter((p) => p.t === 'status').length, 0);
+    assert.equal(statusOf(' در حال تکمیل '), 'progress');
+    assert.equal(statusOf('something else'), null);
   });
 });
 
@@ -259,6 +304,14 @@ describe('served report pages', { timeout: 180_000 }, () => {
     assert.ok(html.includes('A paragraph with item 42') && !html.includes('item ۴۲'), 'prose digits are verbatim');
     assert.ok(html.includes('<code dir="ltr" class="rpt-code">code 7</code>'), 'inline code keeps its direction and its digits');
     assert.ok(!html.includes('<script>alert(1)</script>') && html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'), 'raw HTML is escaped text');
+    // Colour: the background, a numbered heading badge, KPI accents, status pill and notes, the callout boxes.
+    assert.ok(html.includes('class="rpt-page rpt-bg"'), 'the tech background');
+    assert.match(html, /class="rpt-h2 rpt-h2-numbered" data-accent="1"><span class="rpt-h-num" aria-hidden="true">1<\/span>/, 'a numbered heading badge');
+    assert.match(html, /class="rpt-figure" data-accent="0"/, 'KPI accents');
+    assert.match(html, /<span class="rpt-pill" data-tone="ok">تأییدشده<\/span>/, 'a status cell as a pill');
+    assert.match(html, /<span class="rpt-status" data-tone="bad">\(باز، note\)<\/span>/, 'a status note');
+    assert.match(html, /<strong class="rpt-status-word" data-tone="bad">رفع‌نشده<\/strong>/, 'a bold status word');
+    for (const k of ['warn', 'info', 'ok']) assert.ok(html.includes(`class="rpt-callout-${k}"`), 'callout ' + k);
   });
 
   test('404 for an unknown slug, a malformed slug, a malformed data file, a dot directory and a duplicate slug', async () => {
@@ -276,7 +329,8 @@ describe('served report pages', { timeout: 180_000 }, () => {
     assert.equal(res.status, 200);
     const html = await res.text();
     assert.ok(!html.includes('data-testid="report-opening"') && !html.includes('data-testid="report-closing"'));
-    assert.ok(app.logs.join('').includes('container markers ignored (NESTED)'));
+    assert.ok(!html.includes(':::'), 'no marker line reaches the page');
+    assert.ok(app.logs.join('').includes('container markers ignored (NESTED, UNOPENED_END)'));
   });
 
   test('the rest of the site keeps its indexing; the sitemap lists no report', async () => {
