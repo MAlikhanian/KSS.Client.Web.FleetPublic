@@ -5,7 +5,7 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -43,6 +43,8 @@ A paragraph with item 42 and \`code 7\` and **bold text**.
 | value 3 | تأییدشده |
 
 A neutral sentence (باز، note) and another (مشکوک) and a **رفع‌نشده** word.
+
+A long note (تأییدشده، a deliberately long neutral note that runs well past the width of a phone screen and must wrap onto further lines) ends here.
 
 :::callout-warn
 A neutral warning box.
@@ -181,6 +183,28 @@ describe('callouts and status colours', () => {
     assert.equal(parseInline('(تأییدشده در جای دیگر)').filter((p) => p.t === 'status').length, 0);
     assert.equal(statusOf(' در حال تکمیل '), 'progress');
     assert.equal(statusOf('something else'), null);
+  });
+});
+
+describe('long status notes wrap', () => {
+  // A status note may be a full sentence. It must be allowed to wrap, or one long note widens the whole page on a
+  // phone. The layout rule lives in the built stylesheet, so the check reads it there: no rule for .rpt-status may
+  // forbid wrapping, and the tint must continue on each wrapped line.
+  test('the stylesheet lets a status note wrap and keeps its tint per line', () => {
+    const dir = path.join(ROOT, '.next', 'static', 'css');
+    assert.ok(existsSync(dir), 'run `next build` first');
+    const css = readdirSync(dir).filter((f) => f.endsWith('.css')).map((f) => readFileSync(path.join(dir, f), 'utf8')).join('');
+    const rules = [...css.matchAll(/([^{}]*\.rpt-status(?![-\w])[^{}]*)\{([^{}]*)\}/g)].map((m) => m[2]);
+    assert.ok(rules.length > 0, 'control: the .rpt-status rule is found');
+    assert.ok(rules.every((body) => !/white-space:\s*nowrap/.test(body)), 'no .rpt-status rule forbids wrapping');
+    assert.ok(rules.some((body) => /(?:^|;)\s*box-decoration-break:\s*clone/.test(body)), 'box-decoration-break: clone');
+    assert.ok(rules.some((body) => /-webkit-box-decoration-break:\s*clone/.test(body)), 'the -webkit- form for Safari');
+  });
+
+  test('the long note in the fixture is a status note', () => {
+    const notes = parseInline('A long note (تأییدشده، a deliberately long neutral note that runs well past the width of a phone screen and must wrap onto further lines) ends here.').filter((p) => p.t === 'status');
+    assert.equal(notes.length, 1);
+    assert.ok(notes[0].v.length > 100, 'longer than a phone screen holds on one line');
   });
 });
 
