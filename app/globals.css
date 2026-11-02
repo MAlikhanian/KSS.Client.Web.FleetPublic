@@ -361,13 +361,6 @@
   }
 }
 
-/* A stat card's number in red: the theme's danger colour, readable in both themes. */
-@layer components {
-  .stat-value-red {
-    color: var(--danger);
-  }
-}
-
 /* Organisation chart lines: a bus over a row, a tick down to each card of its first row, a stem between levels. */
 @utility org-bus {
   position: relative;
