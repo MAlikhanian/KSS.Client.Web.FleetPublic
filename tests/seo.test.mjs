@@ -158,6 +158,13 @@ describe('crawl files and icons', () => {
     assert.doesNotMatch(t, /Disallow: \/\s*$/m, 'must not disallow the whole site');
     assert.match(t, new RegExp(`Sitemap: ${SITE}/sitemap.xml`));
   });
+  test('robots.txt disallows /s/ and is otherwise unchanged', async () => {
+    const t = await (await fetch(`${base}/robots.txt`)).text();
+    // The whole file, line for line: the earlier rules, host and sitemap stay as they were; only the /s/ line is new.
+    assert.equal(t, `User-Agent: *\nAllow: /\nDisallow: /api/\nDisallow: /s/\n\nHost: ${SITE}\nSitemap: ${SITE}/sitemap.xml\n`);
+    assert.doesNotMatch(t, /^Disallow: \/s\s*$/m, 'never a bare /s prefix: it would block /sitemap.xml');
+    assert.equal((await fetch(`${base}/sitemap.xml`)).status, 200, 'the sitemap is still served');
+  });
   test('sitemap.xml lists both languages', async () => {
     const t = await (await fetch(`${base}/sitemap.xml`)).text();
     assert.ok(t.includes(`<loc>${SITE}/</loc>`));
