@@ -455,6 +455,9 @@ describe('served pages against the snapshot service, every state', { timeout: 2_
       assert.ok(html.includes('data-testid="theme-toggle"'), route + ': the theme switch is there');
       assert.ok(html.includes("localStorage.getItem('fleet-theme')"), route + ': a stored theme is applied before paint');
       assert.equal((html.match(/data-testid="stat"/g) ?? []).length, 4, route + ': four stat cards without the active-now figure');
+      // The departments card, and only that card, has its number in red.
+      const cards = html.replace(/<script[\s\S]*?<\/script>/g, '').split('data-stat="').slice(1);
+      assert.deepEqual(cards.filter((c) => c.includes('stat-value-red')).map((c) => c.split('"')[0]), ['departments'], route + ': the red number is on the departments card only');
       assert.ok(!html.includes('class="la"'), route + ': no last-active text when the service sends none');
       assert.ok(!html.includes('data-testid="team-activity"'), route + ': no team graph when the service sends none');
     }

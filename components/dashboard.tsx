@@ -78,12 +78,12 @@ function MixBar({ parts, label }: { parts: { key: string; color: string; count: 
   );
 }
 
-function StatCard({ label, value, hint, children, testid, className }: { label: string; value: string; hint?: string; children?: ReactNode; testid: string; className?: string }) {
+function StatCard({ label, value, hint, children, testid, className, valueClassName }: { label: string; value: string; hint?: string; children?: ReactNode; testid: string; className?: string; valueClassName?: string }) {
   return (
     <Card className={`flex min-w-0 flex-col gap-2 p-4 lg:p-5 ${className ?? ''}`} data-testid="stat" data-stat={testid}>
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className="flex items-end justify-between gap-3">
-        <span className="text-2xl leading-tight font-extrabold tabular-nums lg:text-[2rem]">{value}</span>
+        <span className={`text-2xl leading-tight font-extrabold tabular-nums lg:text-[2rem] ${valueClassName ?? ''}`}>{value}</span>
         {children}
       </span>
       {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
@@ -112,7 +112,7 @@ export function StatCards({ model, c }: { model: ChartModel; c: Copy }) {
         <Sparkline values={daily} label={c.sparkLabel(daily.map(num).join('، '))} />
       </StatCard>
       <StatCard label={c.statTeams} value={num(leads.length)} hint={c.dash.statTeamsHint(products ? num(products) : null)} testid="teams" className={five(2)} />
-      <StatCard label={c.dash.statDepartments} value={num(model.headcount.length)} testid="departments" className={five(3)} />
+      <StatCard label={c.dash.statDepartments} value={num(model.headcount.length)} testid="departments" className={five(3)} valueClassName="stat-value-red" />
       {model.activeNow !== null ? <StatCard label={c.statActive} value={num(model.activeNow)} testid="active" className={five(4)} /> : null}
     </div>
   );
